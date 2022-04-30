@@ -114,8 +114,8 @@ struct Peaks : Module {
 	bool initNumberStation = false;
 
 	struct Block {
-		peaks::GateFlags input[kNumChannels][kBlockSize];
-		uint16_t output[kNumChannels][kBlockSize];
+		peaks::GateFlags input[kNumChannels][kBlockSize] = {};
+		uint16_t output[kNumChannels][kBlockSize] = {};
 	};
 
 	struct Slice {
@@ -123,7 +123,7 @@ struct Peaks : Module {
 		size_t frame_index;
 	};
 
-	Block block_[kNumBlocks];
+	Block block_[kNumBlocks] = {};
 	size_t io_frame_ = 0;
 	size_t io_block_ = 0;
 	size_t render_block_ = kNumBlocks / 2;
