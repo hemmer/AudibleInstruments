@@ -220,6 +220,8 @@ struct Peaks : Module {
 		processors[1].Init(1);
 
 		cvDivider.setDivision(cvUpdateFrequency);
+
+		init();
 	}
 
 	void onReset() override {
