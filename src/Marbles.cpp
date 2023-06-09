@@ -232,7 +232,7 @@ struct Marbles : Module {
 		configParam(X_SPREAD_PARAM, 0.0, 1.0, 0.5, "Probability distribution");
 		configButton(T_MODE_PARAM, "T mode");
 		configButton(X_MODE_PARAM, "X mode");
-		configParam(DEJA_VU_LENGTH_PARAM, 0.0, 1.0, 0.0, "Loop length");
+		configParam(DEJA_VU_LENGTH_PARAM, 0.0, 1.0, 1.0, "Loop length");
 		configParam(T_BIAS_PARAM, 0.0, 1.0, 0.5, "Gate bias");
 		configParam(X_BIAS_PARAM, 0.0, 1.0, 0.5, "Distribution bias");
 		configButton(T_RANGE_PARAM, "Clock range mode");
@@ -267,8 +267,8 @@ struct Marbles : Module {
 	}
 
 	void onReset() override {
-		t_deja_vu = false;
-		x_deja_vu = false;
+		t_deja_vu = true;
+		x_deja_vu = true;
 		t_mode = 0;
 		x_mode = 0;
 		t_range = 1;
