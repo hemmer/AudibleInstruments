@@ -908,7 +908,8 @@ struct PeaksWidget : ModuleWidget {
 				return peaks->processors[0].function() == peaks::PROCESSOR_FUNCTION_NUMBER_STATION;
 			},
 			[ = ](bool val) {
-				peaks->initNumberStation = true;
+				peaks->initNumberStation = val;
+				peaks->init();
 			}));
 		}
 		                                ));
