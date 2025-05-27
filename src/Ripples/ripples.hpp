@@ -95,6 +95,8 @@ static const float kFeedforwardC = 220e-9f;
 static const float kLP2Gain = -100e3f / 39e3f;
 static const float kLP4Gain = -100e3f / 33e3f;
 static const float kBP2Gain = -100e3f / 39e3f;
+static const float kBP4Gain = -100e3f / 39e3f;
+static const float kHP2Gain = -100e3f / 39e3f;
 
 // VCA
 static const float kVCAInputC = 4.7e-6f;
@@ -111,7 +113,7 @@ static const float kVtoICollectorVSat = -10.f;
 // Opamp saturation voltage
 static const float kOpampSatV = 10.6f;
 
-
+template <bool v1>
 class RipplesEngine
 {
 public:
@@ -130,11 +132,23 @@ public:
         float gain_cv;
         bool gain_cv_present;
 
-        // Outputs
+        // v2 
+        // 0 - slope is 2-pole
+        // 1 - slope is 4-pole
+        int slope;
+
+        // Outputs v1
         float bp2;
         float lp2;
         float lp4;
         float lp4vca;
+
+        // Outputs v2
+        float hp;
+        float bp;
+        float lp;
+        float lpvca; // Low-pass 4-pole VCA output
+
     };
 
     RipplesEngine()
@@ -199,14 +213,21 @@ public:
         for (int i = 0; i < oversampling_factor; i++)
         {
             inputs = aa_filter_.ProcessUp((i == 0) ? inputs : 0.f);
-            outputs = CoreProcess(inputs, timestep);
+            outputs = CoreProcess(inputs, timestep, frame.slope, frame.gain_cv_present);
             outputs = aa_filter_.ProcessDown(outputs);
         }
 
-        frame.bp2    = outputs[0];
-        frame.lp2    = outputs[1];
-        frame.lp4    = outputs[2];
-        frame.lp4vca = outputs[3];
+        if (v1) {
+            frame.bp2    = outputs[0];
+            frame.lp2    = outputs[1];
+            frame.lp4    = outputs[2];
+            frame.lp4vca = outputs[3];
+        } else {
+            frame.hp     = outputs[0];
+            frame.bp     = outputs[1];
+            frame.lp     = outputs[2];
+            frame.lpvca  = outputs[3];
+        }
     }
 
 protected:
@@ -219,7 +240,7 @@ protected:
     // High-rate processing core
     // inputs: vector containing (input, v_oct, i_reso, i_vca)
     // returns: vector containing (bp2, lp2, lp4, lp4vca)
-    simd::float_4 CoreProcess(simd::float_4 inputs, float timestep)
+    simd::float_4 CoreProcess(simd::float_4 inputs, float timestep, int slope, bool gainCvPresent)
     {
         rc_filters_.process(inputs);
 
@@ -287,14 +308,40 @@ protected:
 
         float lp1 = cell_voltage_[0];
         float lp2 = cell_voltage_[1];
+        float lp3 = cell_voltage_[2];
         float lp4 = cell_voltage_[3];
-        float bp2 = (lp1 + lp2) * kBP2Gain;
-        vca_hpf_.process(lp4);
-        float lp4vca = vca_hpf_.highpass();
-        lp4vca = -kVCAOutputR * OTAVCA(0.f, lp4vca * kVCAInputGain, i_vca);
-        lp2 *= kLP2Gain;
-        lp4 *= kLP4Gain;
-        return simd::float_4(bp2, lp2, lp4, lp4vca);
+        float bp2 = (lp1 + lp2);        
+
+
+        if (v1) {
+            float lp4vca = 0.f;
+            if (gainCvPresent) {
+                vca_hpf_.process(lp4);
+                lp4vca = vca_hpf_.highpass();
+                lp4vca = -kVCAOutputR * OTAVCA(0.f, lp4vca * kVCAInputGain, i_vca);
+            }
+            return simd::float_4(bp2 * kBP2Gain, lp2*kLP2Gain, lp4*kLP4Gain, lp4vca);
+        } else {
+            float vp = feedforward * kFeedforwardGain;
+            float vn = cell_voltage_[3] * kFeedbackGain;
+            float res = kFilterCellR * OTAVCA(vp, vn, i_reso);
+            float filterIn = inputs[0] * kFilterInputGain + res;
+            float bp4 = (lp2 + 2*lp3 + lp4) * kBP2Gain;
+
+            float lp = (slope == 0) ? lp2 : lp4;
+            float bp = (slope == 0) ? bp2 * kBP2Gain : bp4 * kBP4Gain;
+            float hp2 = (filterIn + 2*lp1 + lp2)*kHP2Gain;
+
+            float lpvca = 0.f;
+            if (gainCvPresent) {
+                vca_hpf_.process(lp);
+                lpvca = vca_hpf_.highpass();
+                lpvca = -kVCAOutputR * OTAVCA(0.f, lpvca * kVCAInputGain, i_vca);
+            }
+
+            return simd::float_4(hp2, bp, lp * kLP2Gain, lpvca);
+        }
+
     }
 
     // Solves an ODE system using the 2nd order Runge-Kutta method
