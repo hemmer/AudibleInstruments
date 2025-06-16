@@ -7,25 +7,25 @@ typedef ripples::RipplesEngine<false> RipplesEngineV2;
 struct RipplesV2 : Module {
 	enum ParamId {
 		SLOPE_PARAM,
-		FREQ_PARAM,
-		RES_PARAM,
+		FREQUENCY_PARAM,
+		RESONANCE_PARAM,
 		GAIN_PARAM,
 		FM_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
-		FM_INPUT,
-		IN2_INPUT,
-		RES_INPUT,
-		FREQ_INPUT,
 		IN1_INPUT,
+		FM_INPUT,
+		RESO_INPUT,
+		IN2_INPUT,
+		VOCT_INPUT,
 		GAIN_INPUT,
 		INPUTS_LEN
 	};
 	enum OutputId {
-		LP_OUTPUT,
-		BP_OUTPUT,
 		HP_OUTPUT,
+		BP_OUTPUT,
+		LP_OUTPUT,
 		OUTPUTS_LEN
 	};
 	enum LightId {
@@ -36,10 +36,11 @@ struct RipplesV2 : Module {
 
 	RipplesEngineV2 engines[16];
 
+
 	RipplesV2() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
-		configParam(RES_PARAM, 0.f, 1.f, 0.f, "Resonance", "%", 0, 100);
-		configParam(FREQ_PARAM, std::log2(ripples::kFreqKnobMin), std::log2(ripples::kFreqKnobMax), std::log2(ripples::kFreqKnobMax), "Frequency", " Hz", 2.f);
+		configParam(RESONANCE_PARAM, 0.f, 1.f, 0.f, "Resonance", "%", 0, 100);
+		configParam(FREQUENCY_PARAM, std::log2(ripples::kFreqKnobMin), std::log2(ripples::kFreqKnobMax), std::log2(ripples::kFreqKnobMax), "Frequency", " Hz", 2.f);
 		configParam(FM_PARAM, -1.f, 1.f, 0.f, "Frequency modulation", "%", 0, 100);
 
 		configSwitch(SLOPE_PARAM, 0.f, 1.f, 0.f, "Slope", {"2-pole", "4-pole"});
@@ -47,8 +48,8 @@ struct RipplesV2 : Module {
 		configParam(GAIN_PARAM, 0.f, 1.f, 0.f, "Gain");
 		configInput(FM_INPUT, "FM");
 		configInput(IN2_INPUT, "In 2");
-		configInput(RES_INPUT, "Resonance CV");
-		configInput(FREQ_INPUT, "V/Oct");
+		configInput(RESO_INPUT, "Resonance CV");
+		configInput(VOCT_INPUT, "V/Oct");
 		configInput(IN1_INPUT, "In 1");
 		configInput(GAIN_INPUT, "Gain");
 		configOutput(LP_OUTPUT, "Lowpass");
@@ -69,22 +70,24 @@ struct RipplesV2 : Module {
 		}
 	}
 
+	// clipping: https://falstad.com/circuit/circuitjs.html?ctz=CQAgjCAMB0l3BWEAWATLBBOAzM5kxVJsAObbEBJJZChAUwFowwAoAJREaJPE1S6oEANj4DI4FBIDs0JBIVzWAJ0GReYfl0IatEsPDgrtqXQOamQQ0foRGA5id7WnV6eKisA7q83nkZp5g0shc2AKo7lwB4JYQBvBQ0JiYdobpcBDs9ADOAJY5AC4AhgB2AMb0rMUg4bEaePUgGkjMSAmGSYYIIZABmuFwwsJkUODp3mECLAJ1M56Oc41zep4+jHOEU80Kk2CNJPqNOmvbh9t1kMYbswIxl+OGxvfTyx4IHXtv4Ae7qvuhE6ofBNfTwVgAeVqCFeoWQYFEALGV1UNzc5jqgzGVHBjjRWPxMORrAAXmcJDFzgIACb0ABmxQArgAbQqMEn0Ur0ZSkn6hc6UiQ0+lM1nsznc6pWEFI7BEpEtbTtDJcGDdXrYYTSQjIYbwzBjDpGHzA-SWU0gTA2SZygRW6GwhbS-TCIUy1Yo52W0S272G8EAe3AomEoQpkEwzkUEAk8mRtRA0jGSewrCAA
+
 	void process(const ProcessArgs& args) override {
 
-		const int channels = std::max({inputs[IN1_INPUT].getChannels(), inputs[IN2_INPUT].getChannels(), 
-									   inputs[FREQ_INPUT].getChannels(), 1});
+		const int channels = std::max({inputs[IN1_INPUT].getChannels(), inputs[IN2_INPUT].getChannels(),
+		                               inputs[VOCT_INPUT].getChannels(), 1});
 
 		// Reuse the same frame object for multiple engines because the params aren't touched.
 		RipplesEngineV2::Frame frame;
-		frame.res_knob = params[RES_PARAM].getValue();
-		frame.freq_knob = rescale(params[FREQ_PARAM].getValue(), std::log2(ripples::kFreqKnobMin), std::log2(ripples::kFreqKnobMax), 0.f, 1.f);
+		frame.res_knob = params[RESONANCE_PARAM].getValue();
+		frame.freq_knob = rescale(params[FREQUENCY_PARAM].getValue(), std::log2(ripples::kFreqKnobMin), std::log2(ripples::kFreqKnobMax), 0.f, 1.f);
 		frame.fm_knob = params[FM_PARAM].getValue();
 		frame.gain_cv_present = inputs[GAIN_INPUT].isConnected();
 		frame.slope = (int)params[SLOPE_PARAM].getValue();
 
 		for (int c = 0; c < channels; c++) {
-			frame.res_cv = inputs[RES_INPUT].getPolyVoltage(c);
-			frame.freq_cv = inputs[FREQ_INPUT].getPolyVoltage(c);
+			frame.res_cv = inputs[RESO_INPUT].getPolyVoltage(c);
+			frame.freq_cv = inputs[VOCT_INPUT].getPolyVoltage(c);
 			frame.fm_cv = inputs[FM_INPUT].getPolyVoltage(c);
 			frame.input = params[GAIN_PARAM].getValue() * inputs[IN1_INPUT].getVoltage(c) + inputs[IN2_INPUT].getVoltage(c);
 			frame.gain_cv = inputs[GAIN_INPUT].getPolyVoltage(c);
@@ -111,25 +114,25 @@ struct RipplesV2Widget : ModuleWidget {
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
 		addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-		addParam(createParam<CKSS>(mm2px(Vec(30.334, 21.656)), module, RipplesV2::SLOPE_PARAM));
-		addParam(createParamCentered<Rogan3PSWhite>(mm2px(Vec(13.109, 24.381)), module, RipplesV2::FREQ_PARAM));
-		addParam(createParamCentered<Rogan2PSWhite>(mm2px(Vec(30.466, 46.532)), module, RipplesV2::RES_PARAM));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(8.12, 65.677)), module, RipplesV2::GAIN_PARAM));
-		addParam(createParamCentered<Trimpot>(mm2px(Vec(20.26, 65.677)), module, RipplesV2::FM_PARAM));
+		addParam(createParam<CKSS>(mm2px(Vec(30.107, 21.706)), module, RipplesV2::SLOPE_PARAM));
+		addParam(createParamCentered<Rogan3PSWhite>(mm2px(Vec(13.302, 25.349)), module, RipplesV2::FREQUENCY_PARAM));
+		addParam(createParamCentered<Rogan2PSWhite>(mm2px(Vec(30.453, 46.95)), module, RipplesV2::RESONANCE_PARAM));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(8.052, 66.0)), module, RipplesV2::GAIN_PARAM));
+		addParam(createParamCentered<Trimpot>(mm2px(Vec(20.152, 66.0)), module, RipplesV2::FM_PARAM));
 
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20.655, 82.05)), module, RipplesV2::FM_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(8.682, 82.274)), module, RipplesV2::IN1_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(32.628, 82.293)), module, RipplesV2::RES_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20.655, 96.334)), module, RipplesV2::FREQ_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(8.682, 96.705)), module, RipplesV2::IN2_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(32.628, 96.563)), module, RipplesV2::GAIN_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(8.052, 81.9)), module, RipplesV2::IN1_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20.152, 81.9)), module, RipplesV2::FM_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(32.252, 81.9)), module, RipplesV2::RESO_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(8.052, 96.5)), module, RipplesV2::IN2_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(20.152, 96.5)), module, RipplesV2::VOCT_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(32.252, 96.5)), module, RipplesV2::GAIN_INPUT));
 
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(8.682, 111.05)), module, RipplesV2::HP_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(20.655, 111.05)), module, RipplesV2::BP_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(32.628, 111.05)), module, RipplesV2::LP_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(8.052, 111.1)), module, RipplesV2::HP_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(20.152, 111.1)), module, RipplesV2::BP_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(32.252, 111.1)), module, RipplesV2::LP_OUTPUT));
 
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(4.801, 75.315)), module, RipplesV2::IN1_LIGHT));
-		addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(4.786, 89.909)), module, RipplesV2::IN2_LIGHT));
+		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(4.702, 75.55)), module, RipplesV2::IN1_LIGHT));
+		addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(4.702, 90.15)), module, RipplesV2::IN2_LIGHT));
 	}
 };
 
