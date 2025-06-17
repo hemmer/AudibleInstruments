@@ -36,6 +36,9 @@ struct RipplesV2 : Module {
 
 	RipplesEngineV2 engines[16];
 
+	dsp::VuMeter2 vuMeter[2];
+	dsp::ClockDivider vuDivider;
+	const static int VU_UPDATE_RATE = 32;
 
 	RipplesV2() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
@@ -44,8 +47,9 @@ struct RipplesV2 : Module {
 		configParam(FM_PARAM, -1.f, 1.f, 0.f, "Frequency modulation", "%", 0, 100);
 
 		configSwitch(SLOPE_PARAM, 0.f, 1.f, 0.f, "Slope", {"2-pole", "4-pole"});
+		// note this is 40 dB, not 20 dB as we square the gain value below to get the right taper
+		configParam(GAIN_PARAM, 0.0, 2.5, 1.0, "Gain", " dB", -10, 40);
 
-		configParam(GAIN_PARAM, 0.f, 1.f, 0.f, "Gain");
 		configInput(FM_INPUT, "FM");
 		configInput(IN2_INPUT, "In 2");
 		configInput(RESO_INPUT, "Resonance CV");
@@ -55,6 +59,8 @@ struct RipplesV2 : Module {
 		configOutput(LP_OUTPUT, "Lowpass");
 		configOutput(BP_OUTPUT, "Bandpass");
 		configOutput(HP_OUTPUT, "Highpass");
+
+		vuDivider.setDivision(VU_UPDATE_RATE);
 
 		onSampleRateChange();
 	}
@@ -77,6 +83,10 @@ struct RipplesV2 : Module {
 		const int channels = std::max({inputs[IN1_INPUT].getChannels(), inputs[IN2_INPUT].getChannels(),
 		                               inputs[VOCT_INPUT].getChannels(), 1});
 
+		const float gain = params[GAIN_PARAM].getValue() * params[GAIN_PARAM].getValue();
+		float channel1Sum = 0.f;
+		float channel2Sum = 0.f;
+
 		// Reuse the same frame object for multiple engines because the params aren't touched.
 		RipplesEngineV2::Frame frame;
 		frame.res_knob = params[RESONANCE_PARAM].getValue();
@@ -89,14 +99,31 @@ struct RipplesV2 : Module {
 			frame.res_cv = inputs[RESO_INPUT].getPolyVoltage(c);
 			frame.freq_cv = inputs[VOCT_INPUT].getPolyVoltage(c);
 			frame.fm_cv = inputs[FM_INPUT].getPolyVoltage(c);
-			frame.input = params[GAIN_PARAM].getValue() * inputs[IN1_INPUT].getVoltage(c) + inputs[IN2_INPUT].getVoltage(c);
+
+			frame.input = gain * inputs[IN1_INPUT].getVoltage(c);
+			frame.input2 = inputs[IN2_INPUT].getVoltage(c);
 			frame.gain_cv = inputs[GAIN_INPUT].getPolyVoltage(c);
+
+			// for vuMeter
+			channel1Sum += clamp(std::abs(gain * inputs[IN1_INPUT].getVoltage(c)), 0.f, ripples::clipFactor) / 5.f;
+			channel2Sum += std::abs(inputs[IN2_INPUT].getVoltage(c) / 5.f);
+
 
 			engines[c].process(frame);
 
 			outputs[HP_OUTPUT].setVoltage(frame.hp, c);
 			outputs[BP_OUTPUT].setVoltage(frame.bp, c);
-			outputs[LP_OUTPUT].setVoltage(frame.gain_cv_present ? frame.lpvca : frame.lp, c);
+			outputs[LP_OUTPUT].setVoltage(frame.gain_cv_present ? frame.lpvca : -frame.lp, c);
+		}
+
+		if (vuDivider.process()) {
+			const float sampleTime = args.sampleTime * VU_UPDATE_RATE;
+
+			vuMeter[0].process(sampleTime, channel1Sum / channels);
+			vuMeter[1].process(sampleTime, channel2Sum / channels);
+
+			lights[IN1_LIGHT].setBrightnessSmooth(vuMeter[0].getBrightness(-6.f, 0.f), sampleTime);
+			lights[IN2_LIGHT].setBrightnessSmooth(vuMeter[1].getBrightness(-6.f, 0.f), sampleTime);
 		}
 
 		outputs[HP_OUTPUT].setChannels(channels);

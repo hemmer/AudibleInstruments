@@ -95,8 +95,10 @@ static const float kFeedforwardC = 220e-9f;
 static const float kLP2Gain = -100e3f / 39e3f;
 static const float kLP4Gain = -100e3f / 33e3f;
 static const float kBP2Gain = -100e3f / 39e3f;
-static const float kBP4Gain = -100e3f / 39e3f;
-static const float kHP2Gain = -100e3f / 39e3f;
+
+static const float kBP2GainV2 = +100e3f / 33.2e3f;
+static const float kBP4Gain = +100e3f / 16.2e3f;
+static const float kHP2Gain = 51e3f / 33e3f;
 
 // VCA
 static const float kVCAInputC = 4.7e-6f;
@@ -105,6 +107,8 @@ static const float kVCAInputRb = 1e3f;
 static const float kVCAInputR = kVCAInputRt + kVCAInputRb;
 static const float kVCAInputGain = kVCAInputRb / kVCAInputR;
 static const float kVCAOutputR = 100e3f;
+
+static const float clipFactor = 8.f;
 
 // Voltage-to-current converters
 // Saturation voltage at BJT collector
@@ -149,6 +153,9 @@ public:
         float lp;
         float lpvca; // Low-pass 4-pole VCA output
 
+        // additional input for channel 2
+        float input2;
+
     };
 
     RipplesEngine()
@@ -162,6 +169,7 @@ public:
         cell_voltage_ = 0.f;
 
         aa_filter_.Init(sample_rate);
+        aa_filter_additional_.Init(sample_rate);
 
         float oversample_rate =
             sample_rate * aa_filter_.GetOversamplingFactor();
@@ -206,18 +214,27 @@ public:
         float timestep = sample_time_ / oversampling_factor;
         // Add noise to input to bootstrap self-oscillation
         float input = frame.input + 1e-6 * (random::uniform() - 0.5f);
+        
         auto inputs = simd::float_4(input, v_oct, i_reso, i_vca);
         inputs *= oversampling_factor;
+        float inputs_alt = frame.input2 * oversampling_factor;
         simd::float_4 outputs;
 
         for (int i = 0; i < oversampling_factor; i++)
         {
             inputs = aa_filter_.ProcessUp((i == 0) ? inputs : 0.f);
+            
+            if constexpr (!v1) {
+                // For v2, we add the second input to the first one, we need both to be upsampled
+                // hence the additional AA filter. soft clipping only applies to the first input.
+                inputs_alt = aa_filter_additional_.ProcessUp((i == 0) ? inputs_alt: 0.f);
+                inputs[0] = clipFactor * std::tanh(inputs[0] / clipFactor) + inputs_alt;
+            }
             outputs = CoreProcess(inputs, timestep, frame.slope, frame.gain_cv_present);
             outputs = aa_filter_.ProcessDown(outputs);
         }
 
-        if (v1) {
+        if constexpr (v1) {
             frame.bp2    = outputs[0];
             frame.lp2    = outputs[1];
             frame.lp4    = outputs[2];
@@ -234,6 +251,7 @@ protected:
     float sample_time_;
     simd::float_4 cell_voltage_;
     ripples::AAFilter<simd::float_4> aa_filter_;
+    ripples::AAFilter<float> aa_filter_additional_;
     dsp::TRCFilter<simd::float_4> rc_filters_;
     dsp::TRCFilter<float> vca_hpf_;
 
@@ -313,7 +331,7 @@ protected:
         float bp2 = (lp1 + lp2);        
 
 
-        if (v1) {
+        if constexpr (v1) {
             float lp4vca = 0.f;
             if (gainCvPresent) {
                 vca_hpf_.process(lp4);
@@ -326,10 +344,10 @@ protected:
             float vn = cell_voltage_[3] * kFeedbackGain;
             float res = kFilterCellR * OTAVCA(vp, vn, i_reso);
             float filterIn = inputs[0] * kFilterInputGain + res;
-            float bp4 = (lp2 + 2*lp3 + lp4) * kBP2Gain;
+            float bp4 = (lp2 + 2*lp3 + lp4);
 
             float lp = (slope == 0) ? lp2 : lp4;
-            float bp = (slope == 0) ? bp2 * kBP2Gain : bp4 * kBP4Gain;
+            float bp = (slope == 0) ? bp2 * kBP2GainV2 : bp4 * kBP4Gain;
             float hp2 = (filterIn + 2*lp1 + lp2)*kHP2Gain;
 
             float lpvca = 0.f;
