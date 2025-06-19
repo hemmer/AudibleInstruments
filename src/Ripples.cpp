@@ -1,7 +1,7 @@
 #include "plugin.hpp"
 #include "Ripples/ripples.hpp"
 
-typedef ripples::RipplesEngine<true> RipplesEngineV1;
+using namespace ripples;
 
 struct Ripples : Module {
 	enum ParamIds {
@@ -29,7 +29,7 @@ struct Ripples : Module {
 		NUM_LIGHTS
 	};
 
-	RipplesEngineV1 engines[16];
+	RipplesEngine engines[16];
 
 	Ripples() {
 		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
@@ -71,7 +71,7 @@ struct Ripples : Module {
 		int channels = std::max(inputs[IN_INPUT].getChannels(), 1);
 
 		// Reuse the same frame object for multiple engines because the params aren't touched.
-		RipplesEngineV1::Frame frame;
+		RipplesEngine::Frame frame;
 		frame.res_knob = params[RES_PARAM].getValue();
 		frame.freq_knob = rescale(params[FREQ_PARAM].getValue(), std::log2(ripples::kFreqKnobMin), std::log2(ripples::kFreqKnobMax), 0.f, 1.f);
 		frame.fm_knob = params[FM_PARAM].getValue();

@@ -1,8 +1,7 @@
 #include "plugin.hpp"
-#include "Ripples/ripples.hpp"
+#include "Ripples/ripples_v2.hpp"
 
-typedef ripples::RipplesEngine<false> RipplesEngineV2;
-
+using namespace ripples_2020;
 
 struct RipplesV2 : Module {
 	enum ParamId {
@@ -34,7 +33,7 @@ struct RipplesV2 : Module {
 		LIGHTS_LEN
 	};
 
-	RipplesEngineV2 engines[16];
+	RipplesEngine engines[16];
 
 	dsp::VuMeter2 vuMeter[2];
 	dsp::ClockDivider vuDivider;
@@ -43,7 +42,7 @@ struct RipplesV2 : Module {
 	RipplesV2() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configParam(RESONANCE_PARAM, 0.f, 1.f, 0.f, "Resonance", "%", 0, 100);
-		configParam(FREQUENCY_PARAM, std::log2(ripples::kFreqKnobMin), std::log2(ripples::kFreqKnobMax), std::log2(ripples::kFreqKnobMax), "Frequency", " Hz", 2.f);
+		configParam(FREQUENCY_PARAM, std::log2(kFreqKnobMin), std::log2(kFreqKnobMax), std::log2(kFreqKnobMax), "Frequency", " Hz", 2.f);
 		configParam(FM_PARAM, -1.f, 1.f, 0.f, "Frequency modulation", "%", 0, 100);
 
 		configSwitch(SLOPE_PARAM, 0.f, 1.f, 0.f, "Slope", {"2-pole", "4-pole"});
@@ -88,9 +87,9 @@ struct RipplesV2 : Module {
 		float channel2Sum = 0.f;
 
 		// Reuse the same frame object for multiple engines because the params aren't touched.
-		RipplesEngineV2::Frame frame;
+		RipplesEngine::Frame frame;
 		frame.res_knob = params[RESONANCE_PARAM].getValue();
-		frame.freq_knob = rescale(params[FREQUENCY_PARAM].getValue(), std::log2(ripples::kFreqKnobMin), std::log2(ripples::kFreqKnobMax), 0.f, 1.f);
+		frame.freq_knob = rescale(params[FREQUENCY_PARAM].getValue(), std::log2(kFreqKnobMin), std::log2(kFreqKnobMax), 0.f, 1.f);
 		frame.fm_knob = params[FM_PARAM].getValue();
 		frame.gain_cv_present = inputs[GAIN_INPUT].isConnected();
 		frame.slope = (int)params[SLOPE_PARAM].getValue();
@@ -105,7 +104,7 @@ struct RipplesV2 : Module {
 			frame.gain_cv = inputs[GAIN_INPUT].getPolyVoltage(c);
 
 			// for vuMeter
-			channel1Sum += clamp(std::abs(gain * inputs[IN1_INPUT].getVoltage(c)), 0.f, ripples::clipFactor) / 5.f;
+			channel1Sum += clamp(std::abs(gain * inputs[IN1_INPUT].getVoltage(c)), 0.f, clipFactor) / 5.f;
 			channel2Sum += std::abs(inputs[IN2_INPUT].getVoltage(c) / 5.f);
 
 
@@ -113,7 +112,7 @@ struct RipplesV2 : Module {
 
 			outputs[HP_OUTPUT].setVoltage(frame.hp, c);
 			outputs[BP_OUTPUT].setVoltage(frame.bp, c);
-			outputs[LP_OUTPUT].setVoltage(frame.gain_cv_present ? frame.lpvca : -frame.lp, c);
+			outputs[LP_OUTPUT].setVoltage(frame.lpvca, c);
 		}
 
 		if (vuDivider.process()) {

@@ -22,7 +22,7 @@
 
 using namespace rack;
 
-namespace ripples
+namespace ripples_2020
 {
 
 // Frequency knob
@@ -56,16 +56,16 @@ static const float kFreqAmpC = 560e-12f;
 
 // Resonance CV amplifier
 static const float kResInputR = 22e3f;
-static const float kResKnobV = 12.f;
-static const float kResKnobR = 62e3f;
-static const float kResAmpR = 47e3f;
+static const float kResKnobV = 10.f;
+static const float kResKnobR = 51e3f;
+static const float kResAmpR = 51e3f;
 static const float kResAmpC = 560e-12f;
 
 // Gain CV amplifier
-static const float kGainInputR = 27e3f;
-static const float kGainNormalV = 12.f;
-static const float kGainNormalR = 15e3f;
-static const float kGainAmpR = 47e3f;
+static const float kGainInputR = 39e3f;
+static const float kGainNormalV = 10.f;
+static const float kGainNormalR = 16.2e3f;
+static const float kGainAmpR = 39e3f;
 static const float kGainAmpC = 560e-12f;
 
 // Filter core
@@ -79,30 +79,30 @@ static const float kFilterInputGain = kFilterCellR / kFilterInputR;
 static const float kFilterCellSelfModulation = 0.01f;
 
 // Filter core feedback path
-static const float kFeedbackRt = 22e3f;
-static const float kFeedbackRb = 1e3f;
+static const float kFeedbackRt = 33.2e3f;
+static const float kFeedbackRb = 1.5e3f;
 static const float kFeedbackR = kFeedbackRt + kFeedbackRb;
 static const float kFeedbackGain = kFeedbackRb / kFeedbackR;
 
 // Filter core feedforward path
-static const float kFeedforwardRt = 300e3f;
-static const float kFeedforwardRb = 1e3f;
+static const float kFeedforwardRt = 33.2e3f;
+static const float kFeedforwardRb = 1.5e3f;
 static const float kFeedforwardR = kFeedforwardRt + kFeedforwardRb;
-static const float kFeedforwardGain = kFeedforwardRb / kFeedforwardR;
-static const float kFeedforwardC = 220e-9f;
+static const float kFeedforwardGain = 0.001; // kFeedforwardRb / kFeedforwardR;
+static const float kFeedforwardC = 4.7e-6f;
 
 // Filter output amplifiers
-static const float kLP2Gain = -100e3f / 39e3f;
-static const float kLP4Gain = -100e3f / 33e3f;
-static const float kBP2Gain = -100e3f / 39e3f;
+static const float kBP2Gain = +100e3f / 33.2e3f;
+static const float kBP4Gain = +100e3f / 16.2e3f;
+static const float kHP2Gain = 51e3f / 33e3f;
 
 // VCA
 static const float kVCAInputC = 4.7e-6f;
 static const float kVCAInputRt = 100e3f;
-static const float kVCAInputRb = 1e3f;
+static const float kVCAInputRb = 1.5e3f;
 static const float kVCAInputR = kVCAInputRt + kVCAInputRb;
 static const float kVCAInputGain = kVCAInputRb / kVCAInputR;
-static const float kVCAOutputR = 100e3f;
+static const float kVCAOutputR = 68e3f;
 
 // Voltage-to-current converters
 // Saturation voltage at BJT collector
@@ -112,10 +112,13 @@ static const float kVtoICollectorVSat = -10.f;
 static const float kOpampSatV = 10.6f;
 
 
+static const float clipFactor = 8.f;
+
+
 class RipplesEngine
 {
 public:
-    struct Frame
+ struct Frame
     {
         // Parameters
         float res_knob;     //  0 to 1 linear
@@ -130,11 +133,20 @@ public:
         float gain_cv;
         bool gain_cv_present;
 
-        // Outputs
-        float bp2;
-        float lp2;
-        float lp4;
-        float lp4vca;
+        // v2 
+        // 0 - slope is 2-pole
+        // 1 - slope is 4-pole
+        int slope;
+
+        // Outputs v2
+        float hp;
+        float bp;
+        float lp;
+        float lpvca; // Low-pass 4-pole VCA output
+
+        // additional input for channel 2
+        float input2;
+
     };
 
     RipplesEngine()
@@ -192,34 +204,43 @@ public:
         float timestep = sample_time_ / oversampling_factor;
         // Add noise to input to bootstrap self-oscillation
         float input = frame.input + 1e-6 * (random::uniform() - 0.5f);
+
         auto inputs = simd::float_4(input, v_oct, i_reso, i_vca);
         inputs *= oversampling_factor;
+        float inputs_alt = frame.input2 * oversampling_factor;
         simd::float_4 outputs;
 
         for (int i = 0; i < oversampling_factor; i++)
         {
             inputs = aa_filter_.ProcessUp((i == 0) ? inputs : 0.f);
-            outputs = CoreProcess(inputs, timestep);
+            
+            // For v2, we add the second input to the first one, we need both to be upsampled
+            // hence the additional AA filter. soft clipping only applies to the first input.
+            inputs_alt = aa_filter_additional_.ProcessUp((i == 0) ? inputs_alt: 0.f);
+            inputs[0] = clipFactor * std::tanh(inputs[0] / clipFactor) + inputs_alt;
+            
+            outputs = CoreProcess(inputs, timestep, frame.slope, frame.gain_cv_present);
             outputs = aa_filter_.ProcessDown(outputs);
         }
 
-        frame.bp2    = outputs[0];
-        frame.lp2    = outputs[1];
-        frame.lp4    = outputs[2];
-        frame.lp4vca = outputs[3];
+        frame.hp     = outputs[0];
+        frame.bp     = outputs[1];
+        frame.lp     = outputs[2];
+        frame.lpvca  = outputs[3];
     }
 
 protected:
     float sample_time_;
     simd::float_4 cell_voltage_;
     ripples::AAFilter<simd::float_4> aa_filter_;
+    ripples::AAFilter<float> aa_filter_additional_;
     dsp::TRCFilter<simd::float_4> rc_filters_;
     dsp::TRCFilter<float> vca_hpf_;
 
     // High-rate processing core
     // inputs: vector containing (input, v_oct, i_reso, i_vca)
     // returns: vector containing (bp2, lp2, lp4, lp4vca)
-    simd::float_4 CoreProcess(simd::float_4 inputs, float timestep)
+    simd::float_4 CoreProcess(simd::float_4 inputs, float timestep, int slope, bool gainCvPresent)
     {
         rc_filters_.process(inputs);
 
@@ -287,14 +308,28 @@ protected:
 
         float lp1 = cell_voltage_[0];
         float lp2 = cell_voltage_[1];
+        float lp3 = cell_voltage_[2];
         float lp4 = cell_voltage_[3];
-        float bp2 = (lp1 + lp2) * kBP2Gain;
-        vca_hpf_.process(lp4);
-        float lp4vca = vca_hpf_.highpass();
-        lp4vca = -kVCAOutputR * OTAVCA(0.f, lp4vca * kVCAInputGain, i_vca);
-        lp2 *= kLP2Gain;
-        lp4 *= kLP4Gain;
-        return simd::float_4(bp2, lp2, lp4, lp4vca);
+
+
+        float vp = feedforward * kFeedforwardGain;
+        float vn = cell_voltage_[3] * kFeedbackGain;
+        float res = kFilterCellR * OTAVCA(vp, vn, i_reso);
+        float filterIn = inputs[0] * kFilterInputGain + res;
+        float hp2 = (filterIn + 2*lp1 + lp2)*kHP2Gain;
+
+        float bp2 = (lp1 + lp2);        
+        float bp4 = (lp2 + 2*lp3 + lp4);
+        float bp = (slope == 0) ? bp2 * kBP2Gain : bp4 * kBP4Gain;
+
+        // 2020 version LP always goes through VCA, just normalled to be open
+        float lp = (slope == 0) ? lp2 : lp4;
+        
+        vca_hpf_.process(lp);
+        float lpvca = vca_hpf_.highpass();
+        lpvca = kVCAOutputR * OTAVCA(lpvca * kVCAInputGain, 0.f, i_vca);
+
+        return simd::float_4(hp2, bp, 0.f, lpvca);
     }
 
     // Solves an ODE system using the 2nd order Runge-Kutta method
