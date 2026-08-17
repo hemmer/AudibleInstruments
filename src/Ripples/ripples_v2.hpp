@@ -55,11 +55,11 @@ static const float kFreqAmpR = -kFreqAmpGain * kFreqInputR;
 static const float kFreqAmpC = 560e-12f;
 
 // Resonance CV amplifier
-static const float kResInputR = 22e3f;
-static const float kResKnobV = 10.f;
-static const float kResKnobR = 51e3f;
-static const float kResAmpR = 51e3f;
-static const float kResAmpC = 560e-12f;
+static const float kResInputR = 22e3f;      // R31
+static const float kResKnobV = 10.f;    
+static const float kResKnobR = 51e3f;       // R33
+static const float kResAmpR = 51e3f;        // R32
+static const float kResAmpC = 560e-12f;     // C21
 
 // Gain CV amplifier
 static const float kGainInputR = 39e3f;
@@ -70,11 +70,11 @@ static const float kGainAmpC = 560e-12f;
 
 // Filter core
 static const float kFilterMaxCutoff = kFreqKnobMax;
-static const float kFilterCellR = 33e3f;
+static const float kFilterCellR = 30e3f;
 static const float kFilterCellRC =
     1.f / (2.f * M_PI * kFilterMaxCutoff);
 static const float kFilterCellC = kFilterCellRC / kFilterCellR;
-static const float kFilterInputR = 100e3f;
+static const float kFilterInputR = 98e3f;
 static const float kFilterInputGain = kFilterCellR / kFilterInputR;
 static const float kFilterCellSelfModulation = 0.01f;
 
@@ -88,7 +88,7 @@ static const float kFeedbackGain = kFeedbackRb / kFeedbackR;
 static const float kFeedforwardRt = 33.2e3f;
 static const float kFeedforwardRb = 1.5e3f;
 static const float kFeedforwardR = kFeedforwardRt + kFeedforwardRb;
-static const float kFeedforwardGain = 0.001; // kFeedforwardRb / kFeedforwardR;
+static const float kFeedforwardGain = kFeedforwardRb / kFeedforwardR;
 static const float kFeedforwardC = 4.7e-6f;
 
 // Filter output amplifiers
@@ -160,6 +160,7 @@ public:
         cell_voltage_ = 0.f;
 
         aa_filter_.Init(sample_rate);
+        aa_filter_additional_.Init(sample_rate);
 
         float oversample_rate =
             sample_rate * aa_filter_.GetOversamplingFactor();
@@ -240,8 +241,7 @@ protected:
     // High-rate processing core
     // inputs: vector containing (input, v_oct, i_reso, i_vca)
     // returns: vector containing (bp2, lp2, lp4, lp4vca)
-    simd::float_4 CoreProcess(simd::float_4 inputs, float timestep, int slope, bool gainCvPresent)
-    {
+    simd::float_4 CoreProcess(simd::float_4 inputs, float timestep, int slope, bool gainCvPresent) {
         rc_filters_.process(inputs);
 
         // Lowpass the control signals
@@ -284,7 +284,7 @@ protected:
                 _mm_shuffle_ps(vout.v, vout.v, _MM_SHUFFLE(2, 1, 0, 3));
 
             // The core input is the filter input plus the resonance signal
-            float vp = feedforward * kFeedforwardGain;
+            float vp = feedforward * kFilterInputGain * kFeedforwardGain;
             float vn = vout[3] * kFeedbackGain;
             float res = kFilterCellR * OTAVCA(vp, vn, i_reso);
             simd::float_4 in = inputs[0] * kFilterInputGain + res;
@@ -312,7 +312,7 @@ protected:
         float lp4 = cell_voltage_[3];
 
 
-        float vp = feedforward * kFeedforwardGain;
+        float vp = feedforward * kFilterInputGain * kFeedforwardGain;
         float vn = cell_voltage_[3] * kFeedbackGain;
         float res = kFilterCellR * OTAVCA(vp, vn, i_reso);
         float filterIn = inputs[0] * kFilterInputGain + res;
