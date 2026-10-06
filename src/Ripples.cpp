@@ -1,5 +1,5 @@
 #include "plugin.hpp"
-#include "Ripples/ripples.hpp"
+#include "Ripples/tpt.hpp"
 
 using namespace ripples;
 
@@ -30,6 +30,10 @@ struct Ripples : Module {
 	};
 
 	RipplesEngine engines[16];
+	ripples_tpt::Engine<ripples_tpt::Original> tptEngines[4];
+	int filterModel = 0;
+	int activeFilterModel = 0;
+	int previousChannels = 0;
 
 	Ripples() {
 		config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
@@ -56,11 +60,24 @@ struct Ripples : Module {
 		onSampleRateChange();
 	}
 
+	json_t* dataToJson() override {
+		json_t* rootJ = json_object();
+		json_object_set_new(rootJ, "filterModel", json_string(filterModel == 1 ? "economy-tpt" : "circuit"));
+		return rootJ;
+	}
+
+	void dataFromJson(json_t* rootJ) override {
+		json_t* modelJ = json_object_get(rootJ, "filterModel");
+		filterModel = json_is_string(modelJ) && std::string(json_string_value(modelJ)) == "economy-tpt" ? 1 : 0;
+	}
+
 	void onReset() override {
 		onSampleRateChange();
 	}
 
 	void onSampleRateChange() override {
+		previousChannels = 0;
+		for (auto& engine : tptEngines) engine.setSampleRate(APP->engine->getSampleRate());
 		// TODO In Rack v2, replace with args.sampleRate
 		for (int c = 0; c < 16; c++) {
 			engines[c].setSampleRate(APP->engine->getSampleRate());
@@ -70,13 +87,25 @@ struct Ripples : Module {
 	void process(const ProcessArgs& args) override {
 		int channels = std::max(inputs[IN_INPUT].getChannels(), 1);
 
+		if (filterModel != activeFilterModel) {
+			// Start the selected model with clean audio and control state.
+			for (auto& engine : engines) engine = RipplesEngine();
+			onSampleRateChange();
+			activeFilterModel = filterModel;
+		}
+		for (int c = previousChannels; c < channels; ++c) {
+			tptEngines[c / 4].resetLane(c % 4);
+		}
+		previousChannels = channels;
+
 		// Reuse the same frame object for multiple engines because the params aren't touched.
-		RipplesEngine::Frame frame;
+		RipplesEngine::Frame frame{};
 		frame.res_knob = params[RES_PARAM].getValue();
 		frame.freq_knob = rescale(params[FREQ_PARAM].getValue(), std::log2(ripples::kFreqKnobMin), std::log2(ripples::kFreqKnobMax), 0.f, 1.f);
 		frame.fm_knob = params[FM_PARAM].getValue();
 		frame.gain_cv_present = inputs[GAIN_INPUT].isConnected();
 
+		RipplesEngine::Frame frames[16];
 		for (int c = 0; c < channels; c++) {
 			frame.res_cv = inputs[RES_INPUT].getPolyVoltage(c);
 			frame.freq_cv = inputs[FREQ_INPUT].getPolyVoltage(c);
@@ -84,7 +113,15 @@ struct Ripples : Module {
 			frame.input = inputs[IN_INPUT].getVoltage(c);
 			frame.gain_cv = inputs[GAIN_INPUT].getPolyVoltage(c);
 
-			engines[c].process(frame);
+			frames[c] = frame;
+		}
+		if (filterModel == 1) {
+			for (int c = 0; c < channels; c += 4)
+				tptEngines[c / 4].process(frames + c, std::min(4, channels - c));
+		}
+		for (int c = 0; c < channels; c++) {
+			auto& frame = frames[c];
+			if (filterModel == 0) engines[c].process(frame);
 
 			outputs[BP2_OUTPUT].setVoltage(frame.bp2, c);
 			outputs[LP2_OUTPUT].setVoltage(frame.lp2, c);
@@ -101,6 +138,13 @@ struct Ripples : Module {
 
 
 struct RipplesWidget : ModuleWidget {
+	void appendContextMenu(Menu* menu) override {
+		auto* module = dynamic_cast<Ripples*>(this->module);
+		if (!module) return;
+		menu->addChild(new MenuSeparator);
+		menu->addChild(createIndexPtrSubmenuItem("Filter model", {"Circuit (original)", "Economy (TPT)"}, &module->filterModel));
+	}
+
 	RipplesWidget(Ripples* module) {
 		setModule(module);
 		setPanel(Svg::load(asset::plugin(pluginInstance, "res/Ripples.svg")));
