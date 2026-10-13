@@ -1,42 +1,77 @@
-#include "plugin.hpp"
 #include "Beads/BeadsEngine.hpp"
+#include "Beads/BufferExchange.hpp"
 #include "Beads/ControlLayer.hpp"
 #include "Beads/PanelLayout.hpp"
-#include "Beads/BufferExchange.hpp"
+#include "plugin.hpp"
 #define DRWAV_API static
 #define DRWAV_PRIVATE static
 #define DR_WAV_IMPLEMENTATION
 #include "Beads/BufferFiles.hpp"
-#include <osdialog.h>
 #include "beads/pot_controller.h"
+#include <osdialog.h>
 
 #include <atomic>
 #include <memory>
 
 static constexpr float kMenuGainValues[] = {0.f, .25f, .5f, .75f, 1.f};
-static constexpr const char* kMenuGainLabels[] = {"Minimum", "25%", "50%", "75%", "Maximum"};
+static constexpr const char *kMenuGainLabels[] = {"Minimum", "25%", "50%", "75%", "Maximum"};
 static constexpr float kMenuAmountValues[] = {0.f, .25f, .5f, .75f, 1.f};
-static constexpr const char* kMenuAmountLabels[] = {"0%", "25%", "50%", "75%", "100%"};
+static constexpr const char *kMenuAmountLabels[] = {"0%", "25%", "50%", "75%", "100%"};
 
 struct Beads : Module {
     enum ParamIds {
-        MEDIA_PARAM, FREEZE_PARAM, SEED_PARAM, ASSIGN_PARAM,
-        TIME_PARAM, SIZE_PARAM, SHAPE_PARAM, PITCH_PARAM,
-        TIME_AMOUNT_PARAM, SIZE_AMOUNT_PARAM, SHAPE_AMOUNT_PARAM, PITCH_AMOUNT_PARAM,
-        DENSITY_PARAM, FEEDBACK_PARAM, DRY_WET_PARAM, REVERB_PARAM,
-        INPUT_GAIN_PARAM, FEEDBACK_CV_AMOUNT_PARAM, DRY_WET_CV_AMOUNT_PARAM,
-        REVERB_CV_AMOUNT_PARAM, NUM_PARAMS
+        MEDIA_PARAM,
+        FREEZE_PARAM,
+        SEED_PARAM,
+        ASSIGN_PARAM,
+        TIME_PARAM,
+        SIZE_PARAM,
+        SHAPE_PARAM,
+        PITCH_PARAM,
+        TIME_AMOUNT_PARAM,
+        SIZE_AMOUNT_PARAM,
+        SHAPE_AMOUNT_PARAM,
+        PITCH_AMOUNT_PARAM,
+        DENSITY_PARAM,
+        FEEDBACK_PARAM,
+        DRY_WET_PARAM,
+        REVERB_PARAM,
+        INPUT_GAIN_PARAM,
+        FEEDBACK_CV_AMOUNT_PARAM,
+        DRY_WET_CV_AMOUNT_PARAM,
+        REVERB_CV_AMOUNT_PARAM,
+        NUM_PARAMS
     };
     enum InputIds {
-        TIME_CV_INPUT, SIZE_CV_INPUT, SHAPE_CV_INPUT, PITCH_CV_INPUT,
-        DENSITY_CV_INPUT, ASSIGN_CV_INPUT, SEED_INPUT, FREEZE_INPUT,
-        AUDIO_L_INPUT, AUDIO_R_INPUT, NUM_INPUTS
+        TIME_CV_INPUT,
+        SIZE_CV_INPUT,
+        SHAPE_CV_INPUT,
+        PITCH_CV_INPUT,
+        DENSITY_CV_INPUT,
+        ASSIGN_CV_INPUT,
+        SEED_INPUT,
+        FREEZE_INPUT,
+        AUDIO_L_INPUT,
+        AUDIO_R_INPUT,
+        NUM_INPUTS
     };
-    enum OutputIds { AUDIO_L_OUTPUT, AUDIO_R_OUTPUT, NUM_OUTPUTS };
+    enum OutputIds {
+        AUDIO_L_OUTPUT,
+        AUDIO_R_OUTPUT,
+        NUM_OUTPUTS
+    };
     enum LightIds {
-        MEDIA_R_LIGHT, MEDIA_G_LIGHT, MEDIA_B_LIGHT,
-        FREEZE_LIGHT, SEED_LIGHT, ASSIGN_1_LIGHT, ASSIGN_2_LIGHT,
-        ASSIGN_3_LIGHT, VU_LIGHT, ERROR_LIGHT, NUM_LIGHTS
+        MEDIA_R_LIGHT,
+        MEDIA_G_LIGHT,
+        MEDIA_B_LIGHT,
+        FREEZE_LIGHT,
+        SEED_LIGHT,
+        ASSIGN_1_LIGHT,
+        ASSIGN_2_LIGHT,
+        ASSIGN_3_LIGHT,
+        VU_LIGHT,
+        ERROR_LIGHT,
+        NUM_LIGHTS
     };
 
     std::unique_ptr<audible_beads::BeadsEngine> engine;
@@ -90,10 +125,13 @@ struct Beads : Module {
 
     Beads() {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-        configButton(MEDIA_PARAM, "Media"); configButton(FREEZE_PARAM, "Freeze");
-        configButton(SEED_PARAM, "Seed"); configButton(ASSIGN_PARAM, "CV assignment");
-        for (int id : {MEDIA_PARAM, FREEZE_PARAM, SEED_PARAM, ASSIGN_PARAM})
+        configButton(MEDIA_PARAM, "Media");
+        configButton(FREEZE_PARAM, "Freeze");
+        configButton(SEED_PARAM, "Seed");
+        configButton(ASSIGN_PARAM, "CV assignment");
+        for (int id : {MEDIA_PARAM, FREEZE_PARAM, SEED_PARAM, ASSIGN_PARAM}) {
             getParamQuantity(id)->randomizeEnabled = false;
+        }
         configParam(TIME_PARAM, 0.f, 1.f, .25f, "Grain time");
         configParam(SIZE_PARAM, 0.f, 1.f, .5f, "Grain size");
         configParam(SHAPE_PARAM, 0.f, 1.f, .5f, "Grain shape");
@@ -103,7 +141,9 @@ struct Beads : Module {
         configParam(SHAPE_AMOUNT_PARAM, -1.f, 1.f, 0.f, "Shape CV / randomness amount");
         configParam(PITCH_AMOUNT_PARAM, -1.f, 1.f, 0.f, "Pitch CV / randomness amount");
         configParam(DENSITY_PARAM, -1.f, 1.f, .25f, "Grain density");
-        getParamQuantity(DENSITY_PARAM)->description = "Negative: regular grains / clock division.\nZero: idle center.\nAt zero, unlatched: one grain per trigger.\nPositive: random grains / clock probability.";
+        getParamQuantity(DENSITY_PARAM)->description =
+            "Negative: regular grains / clock division.\nZero: idle center.\nAt zero, unlatched: one grain per "
+            "trigger.\nPositive: random grains / clock probability.";
         configParam(FEEDBACK_PARAM, 0.f, 1.f, 0.f, "Feedback");
         configParam(DRY_WET_PARAM, 0.f, 1.f, .5f, "Dry/wet mix");
         configParam(REVERB_PARAM, 0.f, 1.f, 0.f, "Reverb");
@@ -111,24 +151,37 @@ struct Beads : Module {
         configParam(FEEDBACK_CV_AMOUNT_PARAM, 0.f, 1.f, 1.f, "Feedback CV amount", "%", 0.f, 100.f);
         configParam(DRY_WET_CV_AMOUNT_PARAM, 0.f, 1.f, 0.f, "Dry/wet CV amount", "%", 0.f, 100.f);
         configParam(REVERB_CV_AMOUNT_PARAM, 0.f, 1.f, .5f, "Reverb CV amount", "%", 0.f, 100.f);
-        for (int id : {INPUT_GAIN_PARAM, FEEDBACK_CV_AMOUNT_PARAM, DRY_WET_CV_AMOUNT_PARAM, REVERB_CV_AMOUNT_PARAM})
+        for (int id : {INPUT_GAIN_PARAM, FEEDBACK_CV_AMOUNT_PARAM, DRY_WET_CV_AMOUNT_PARAM, REVERB_CV_AMOUNT_PARAM}) {
             getParamQuantity(id)->randomizeEnabled = false;
-        configInput(TIME_CV_INPUT, "Time CV"); configInput(SIZE_CV_INPUT, "Size CV");
-        configInput(SHAPE_CV_INPUT, "Shape CV"); configInput(PITCH_CV_INPUT, "Pitch CV");
-        configInput(DENSITY_CV_INPUT, "Density CV"); configInput(ASSIGN_CV_INPUT, "Assignable mix CV");
-        configInput(SEED_INPUT, "Seed gate / clock"); configInput(FREEZE_INPUT, "Freeze gate");
-        configInput(AUDIO_L_INPUT, "Audio left")->description = "Uses the first cable channel.\nA single input is treated as mono.";
-        configInput(AUDIO_R_INPUT, "Audio right")->description = "Uses the first cable channel.\nA single input is treated as mono.";
-        configOutput(AUDIO_L_OUTPUT, "Audio left / mono sum"); configOutput(AUDIO_R_OUTPUT, "Audio right / optional grain gate");
+        }
+        configInput(TIME_CV_INPUT, "Time CV");
+        configInput(SIZE_CV_INPUT, "Size CV");
+        configInput(SHAPE_CV_INPUT, "Shape CV");
+        configInput(PITCH_CV_INPUT, "Pitch CV");
+        configInput(DENSITY_CV_INPUT, "Density CV");
+        configInput(ASSIGN_CV_INPUT, "Assignable mix CV");
+        configInput(SEED_INPUT, "Seed gate / clock");
+        configInput(FREEZE_INPUT, "Freeze gate");
+        configInput(AUDIO_L_INPUT, "Audio left")->description =
+            "Uses the first cable channel.\nA single input is treated as mono.";
+        configInput(AUDIO_R_INPUT, "Audio right")->description =
+            "Uses the first cable channel.\nA single input is treated as mono.";
+        configOutput(AUDIO_L_OUTPUT, "Audio left / mono sum");
+        configOutput(AUDIO_R_OUTPUT, "Audio right / optional grain gate");
         configBypass(AUDIO_L_INPUT, AUDIO_L_OUTPUT);
         configBypass(AUDIO_R_INPUT, AUDIO_R_OUTPUT);
-        getParamQuantity(PITCH_PARAM)->description = "Pitch pot: stepped semitone plateaus.\nPitch CV: continuous at 1 V/octave.";
-        getParamQuantity(TIME_AMOUNT_PARAM)->description = "Without CV:\n  CW: uniform randomization.\n  CCW: peaky randomization.\nWith CV:\n  CW: attenuates the signal.\n  CCW: positive CV controls randomization.";
+        getParamQuantity(PITCH_PARAM)->description =
+            "Pitch pot: stepped semitone plateaus.\nPitch CV: continuous at 1 V/octave.";
+        getParamQuantity(TIME_AMOUNT_PARAM)->description =
+            "Without CV:\n  CW: uniform randomization.\n  CCW: peaky randomization.\nWith CV:\n  CW: attenuates the signal.\n  "
+            "CCW: positive CV controls randomization.";
         getParamQuantity(SIZE_AMOUNT_PARAM)->description = getParamQuantity(TIME_AMOUNT_PARAM)->description;
         getParamQuantity(SHAPE_AMOUNT_PARAM)->description = getParamQuantity(TIME_AMOUNT_PARAM)->description;
         getParamQuantity(PITCH_AMOUNT_PARAM)->description = getParamQuantity(TIME_AMOUNT_PARAM)->description;
-        getParamQuantity(SEED_PARAM)->description = "Momentary seed / clock.\nHold 4 seconds and release to latch.\nSEED + FREEZE also locks the seed.";
-        getParamQuantity(MEDIA_PARAM)->description = "Short press: change media.\nHold 1.5 seconds, then release:\nrestart automatic gain adjustment.";
+        getParamQuantity(SEED_PARAM)->description =
+            "Momentary seed / clock.\nHold 4 seconds and release to latch.\nSEED + FREEZE also locks the seed.";
+        getParamQuantity(MEDIA_PARAM)->description =
+            "Short press: change media.\nHold 1.5 seconds, then release:\nrestart automatic gain adjustment.";
         engine = std::make_unique<audible_beads::BeadsEngine>();
         for (int i = 0; i < 3; ++i) {
             mixPots[i].Init(1.f, 0.f);
@@ -139,17 +192,26 @@ struct Beads : Module {
     }
 
     void onReset() override {
-        pendingBuffers.clear(); frozenBuffers.clear();
+        pendingBuffers.clear();
+        frozenBuffers.clear();
         lockedMixMask.store(0);
-        menuMedia.store(3); menuSeedLocked.store(1); menuGainManual.store(0);
-        menuAssignment.store(0); menuGateOutput.store(0); menuManualGain.store(1.f);
-        menuAssignmentAmounts[0].store(1.f); menuAssignmentAmounts[1].store(0.f); menuAssignmentAmounts[2].store(.5f);
-        menuFreezeLatch.store(0); resetRequested.store(1);
+        menuMedia.store(3);
+        menuSeedLocked.store(1);
+        menuGainManual.store(0);
+        menuAssignment.store(0);
+        menuGateOutput.store(0);
+        menuManualGain.store(1.f);
+        menuAssignmentAmounts[0].store(1.f);
+        menuAssignmentAmounts[1].store(0.f);
+        menuAssignmentAmounts[2].store(.5f);
+        menuFreezeLatch.store(0);
+        resetRequested.store(1);
         params[INPUT_GAIN_PARAM].setValue(1.f);
         params[FEEDBACK_CV_AMOUNT_PARAM].setValue(1.f);
         params[DRY_WET_CV_AMOUNT_PARAM].setValue(0.f);
         params[REVERB_CV_AMOUNT_PARAM].setValue(.5f);
-        editView.store(0); settingsSyncRequested.store(true);
+        editView.store(0);
+        settingsSyncRequested.store(true);
     }
 
     float savedSettingValue(int i) {
@@ -157,57 +219,77 @@ struct Beads : Module {
         const float value = audible_beads::ControlLayer::clamp01(getParamQuantity(ids[i])->getValue());
         // Preserve knob edits made while Rack's engine is paused, as well as
         // context-menu commands not yet mirrored into their parameters.
-        if (value != lastSettingParams[i].load()) return value;
+        if (value != lastSettingParams[i].load()) {
+            return value;
+        }
         return i == 0 ? menuManualGain.load() : menuAssignmentAmounts[i - 1].load();
     }
 
-    json_t* dataToJson() override {
-        json_t* root = json_object();
+    json_t *dataToJson() override {
+        json_t *root = json_object();
         json_object_set_new(root, "beadsVersion", json_integer(2));
         json_object_set_new(root, "media", json_integer(std::clamp(menuMedia.load(), 0, 3)));
         json_object_set_new(root, "seedLocked", json_boolean(menuSeedLocked.load() != 0));
         json_object_set_new(root, "freezeLatch", json_boolean(menuFreezeLatch.load() != 0));
-        json_object_set_new(root, "gainManual", json_boolean(menuGainManual.load() != 0 || getParamQuantity(INPUT_GAIN_PARAM)->getValue() != lastSettingParams[0].load()));
+        json_object_set_new(root, "gainManual",
+                            json_boolean(menuGainManual.load() != 0 ||
+                                         getParamQuantity(INPUT_GAIN_PARAM)->getValue() != lastSettingParams[0].load()));
         json_object_set_new(root, "manualGain", json_real(savedSettingValue(0)));
-        json_object_set_new(root, "assignment", json_integer((getParamQuantity(FEEDBACK_CV_AMOUNT_PARAM)->getValue() != lastSettingParams[1].load() || getParamQuantity(DRY_WET_CV_AMOUNT_PARAM)->getValue() != lastSettingParams[2].load() || getParamQuantity(REVERB_CV_AMOUNT_PARAM)->getValue() != lastSettingParams[3].load()) ? 3 : std::clamp(menuAssignment.load(), 0, 3)));
-        json_t* amounts = json_array();
-        for (int i = 1; i < 4; ++i) json_array_append_new(amounts, json_real(savedSettingValue(i)));
+        json_object_set_new(
+            root, "assignment",
+            json_integer((getParamQuantity(FEEDBACK_CV_AMOUNT_PARAM)->getValue() != lastSettingParams[1].load() ||
+                          getParamQuantity(DRY_WET_CV_AMOUNT_PARAM)->getValue() != lastSettingParams[2].load() ||
+                          getParamQuantity(REVERB_CV_AMOUNT_PARAM)->getValue() != lastSettingParams[3].load())
+                             ? 3
+                             : std::clamp(menuAssignment.load(), 0, 3)));
+        json_t *amounts = json_array();
+        for (int i = 1; i < 4; ++i) {
+            json_array_append_new(amounts, json_real(savedSettingValue(i)));
+        }
         json_object_set_new(root, "assignmentAmounts", amounts);
         json_object_set_new(root, "gateOutput", json_boolean(menuGateOutput.load() != 0));
         // While a hardware-style edit is held, params contain the temporary
         // pointer position. Preserve the audible main values in paused saves.
-        json_t* mainValues = json_array();
+        json_t *mainValues = json_array();
         const unsigned locked = lockedMixMask.load();
-        for (int i = 0; i < 3; ++i)
-            json_array_append_new(mainValues, locked & (1u << i)
-                ? json_real(lockedMixValues[i].load()) : json_null());
+        for (int i = 0; i < 3; ++i) {
+            json_array_append_new(mainValues, locked & (1u << i) ? json_real(lockedMixValues[i].load()) : json_null());
+        }
         json_object_set_new(root, "heldMixValues", mainValues);
         return root;
     }
 
-    void queueBuffer(const audible_beads::FrozenBuffer& buffer) {
-        pendingBuffers.publish([&](audible_beads::FrozenBuffer& out) {
-            if (!buffer.valid()) return false;
-            out = buffer; return true;
+    void queueBuffer(const audible_beads::FrozenBuffer &buffer) {
+        pendingBuffers.publish([&](audible_beads::FrozenBuffer &out) {
+            if (!buffer.valid()) {
+                return false;
+            }
+            out = buffer;
+            return true;
         });
     }
 
-    void onAdd(const AddEvent&) override {
+    void onAdd(const AddEvent &) override {
         auto buffer = std::make_unique<audible_beads::FrozenBuffer>();
         const auto path = system::join(getPatchStorageDirectory(), "frozen-buffer.bin");
-        if (audible_beads::readFrozenFile(path, *buffer)) queueBuffer(*buffer);
+        if (audible_beads::readFrozenFile(path, *buffer)) {
+            queueBuffer(*buffer);
+        }
     }
 
-    bool readSavedBuffer(audible_beads::FrozenBuffer& buffer) {
+    bool readSavedBuffer(audible_beads::FrozenBuffer &buffer) {
         bool available = false;
         // A just-loaded file can be saved before audio processing resumes.
-        pendingBuffers.read([&](const audible_beads::FrozenBuffer& in, uint64_t revision) {
-            if (revision != completedBufferRevision.load()) { buffer = in; available = true; }
+        pendingBuffers.read([&](const audible_beads::FrozenBuffer &in, uint64_t revision) {
+            if (revision != completedBufferRevision.load()) {
+                buffer = in;
+                available = true;
+            }
         });
-        return available || frozenBuffers.read([&](const audible_beads::FrozenBuffer& in, uint64_t) { buffer = in; });
+        return available || frozenBuffers.read([&](const audible_beads::FrozenBuffer &in, uint64_t) { buffer = in; });
     }
 
-    void onSave(const SaveEvent&) override {
+    void onSave(const SaveEvent &) override {
         auto buffer = std::make_unique<audible_beads::FrozenBuffer>();
         const bool available = readSavedBuffer(*buffer);
         if (!available) {
@@ -217,136 +299,171 @@ struct Beads : Module {
         const auto path = system::join(createPatchStorageDirectory(), "frozen-buffer.bin");
         const auto temporary = path + ".tmp";
         if (!audible_beads::writeFrozenFile(temporary, *buffer)) {
-            WARN("Beads: could not save frozen buffer"); system::remove(temporary); return;
+            WARN("Beads: could not save frozen buffer");
+            system::remove(temporary);
+            return;
         }
         // Rack's system helper handles replacing an existing destination.
-        if (!system::rename(temporary, path)) WARN("Beads: could not replace frozen buffer file");
+        if (!system::rename(temporary, path)) {
+            WARN("Beads: could not replace frozen buffer file");
+        }
     }
 
     static std::string bufferDialog(bool save) {
-        osdialog_filters* filters = osdialog_filters_parse("WAV:wav");
-        char* selected = osdialog_file(save ? OSDIALOG_SAVE : OSDIALOG_OPEN,
-                                      nullptr, save ? "beads.wav" : nullptr, filters);
+        osdialog_filters *filters = osdialog_filters_parse("WAV:wav");
+        char *selected = osdialog_file(save ? OSDIALOG_SAVE : OSDIALOG_OPEN, nullptr, save ? "beads.wav" : nullptr, filters);
         osdialog_filters_free(filters);
         std::string path = selected ? selected : "";
         std::free(selected);
-        if (save && !path.empty() && system::getExtension(path).empty()) path += ".wav";
+        if (save && !path.empty() && system::getExtension(path).empty()) {
+            path += ".wav";
+        }
         return path;
     }
 
     void loadBufferWav() {
         const auto path = bufferDialog(false);
-        if (path.empty()) return;
+        if (path.empty()) {
+            return;
+        }
         auto buffer = std::make_unique<audible_beads::FrozenBuffer>();
-        if (audible_beads::readBufferWav(path, std::clamp(menuMedia.load(), 0, 3), *buffer)) queueBuffer(*buffer);
-        else osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK,
-            "Could not load the buffer. Choose a mono or stereo WAV at 8-192 kHz.");
+        if (audible_beads::readBufferWav(path, std::clamp(menuMedia.load(), 0, 3), *buffer)) {
+            queueBuffer(*buffer);
+        } else {
+            osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK,
+                             "Could not load the buffer. Choose a mono or stereo WAV at 8-192 kHz.");
+        }
     }
 
     void saveBufferWav() {
         auto buffer = std::make_unique<audible_beads::FrozenBuffer>();
         const bool available = readSavedBuffer(*buffer);
         if (!available) {
-            osdialog_message(OSDIALOG_INFO, OSDIALOG_OK, "Freeze recorded audio and allow the snapshot to finish before saving the buffer.");
+            osdialog_message(OSDIALOG_INFO, OSDIALOG_OK,
+                             "Freeze recorded audio and allow the snapshot to finish before saving the buffer.");
             return;
         }
         const auto path = bufferDialog(true);
-        if (!path.empty() && !audible_beads::writeBufferWav(path, *buffer))
+        if (!path.empty() && !audible_beads::writeBufferWav(path, *buffer)) {
             osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, "Could not save the buffer WAV.");
+        }
     }
 
-    void dataFromJson(json_t* root) override {
-        if (!root) return;
+    void dataFromJson(json_t *root) override {
+        if (!root) {
+            return;
+        }
         // Version-less development patches use the same key layout. Explicit
         // unknown versions fall back to safe defaults.
-        json_t* version = json_object_get(root, "beadsVersion");
+        json_t *version = json_object_get(root, "beadsVersion");
         if (version && (!json_is_integer(version) || (json_integer_value(version) != 1 && json_integer_value(version) != 2))) {
             onReset();
             return;
         }
-        auto getInt = [root](const char* key, int fallback, int low, int high) {
-            json_t* v = json_object_get(root, key);
-            if (!json_is_integer(v)) return fallback;
+        auto getInt = [root](const char *key, int fallback, int low, int high) {
+            json_t *v = json_object_get(root, key);
+            if (!json_is_integer(v)) {
+                return fallback;
+            }
             int64_t value = json_integer_value(v);
             return int(std::clamp<int64_t>(value, low, high));
         };
-        auto getBool = [root](const char* key, bool fallback) {
-            json_t* v = json_object_get(root, key);
+        auto getBool = [root](const char *key, bool fallback) {
+            json_t *v = json_object_get(root, key);
             return json_is_boolean(v) ? json_is_true(v) : fallback;
         };
         int loadedMedia = getInt("media", 3, 0, 3);
         int loadedAssignment = getInt("assignment", 0, 0, 3);
         bool loadedSeed = getBool("seedLocked", true), loadedFreeze = getBool("freezeLatch", false);
         bool loadedGain = getBool("gainManual", false), loadedGate = getBool("gateOutput", false);
-        menuAssignmentAmounts[0].store(1.f); menuAssignmentAmounts[1].store(0.f);
+        menuAssignmentAmounts[0].store(1.f);
+        menuAssignmentAmounts[1].store(0.f);
         menuAssignmentAmounts[2].store(.5f);
-        json_t* gain = json_object_get(root, "manualGain");
+        json_t *gain = json_object_get(root, "manualGain");
         float loadedGainValue = (json_is_number(gain) && std::isfinite(float(json_number_value(gain))))
-            ? std::clamp(float(json_number_value(gain)), 0.f, 1.f) : 1.f;
-        json_t* amounts = json_object_get(root, "assignmentAmounts");
+                                    ? std::clamp(float(json_number_value(gain)), 0.f, 1.f)
+                                    : 1.f;
+        json_t *amounts = json_object_get(root, "assignmentAmounts");
         if (json_is_array(amounts) && json_array_size(amounts) == 3) {
             for (size_t i = 0; i < 3; ++i) {
-                json_t* v = json_array_get(amounts, i);
-                if (json_is_number(v) && std::isfinite(float(json_number_value(v))))
+                json_t *v = json_array_get(amounts, i);
+                if (json_is_number(v) && std::isfinite(float(json_number_value(v)))) {
                     menuAssignmentAmounts[i].store(std::clamp(float(json_number_value(v)), 0.f, 1.f));
+                }
             }
         }
-        menuMedia.store(loadedMedia); menuSeedLocked.store(loadedSeed);
-        menuGainManual.store(loadedGain); menuManualGain.store(loadedGainValue);
-        menuAssignment.store(loadedAssignment); menuGateOutput.store(loadedGate);
+        menuMedia.store(loadedMedia);
+        menuSeedLocked.store(loadedSeed);
+        menuGainManual.store(loadedGain);
+        menuManualGain.store(loadedGainValue);
+        menuAssignment.store(loadedAssignment);
+        menuGateOutput.store(loadedGate);
         menuFreezeLatch.store(loadedFreeze);
         params[INPUT_GAIN_PARAM].setValue(loadedGainValue);
         params[FEEDBACK_CV_AMOUNT_PARAM].setValue(menuAssignmentAmounts[0].load());
         params[DRY_WET_CV_AMOUNT_PARAM].setValue(menuAssignmentAmounts[1].load());
         params[REVERB_CV_AMOUNT_PARAM].setValue(menuAssignmentAmounts[2].load());
-        json_t* heldValues = json_object_get(root, "heldMixValues");
+        json_t *heldValues = json_object_get(root, "heldMixValues");
         const int mixIds[3] = {FEEDBACK_PARAM, DRY_WET_PARAM, REVERB_PARAM};
         for (int i = 0; i < 3; ++i) {
-            json_t* value = json_array_get(heldValues, i);
-            if (json_is_number(value) && std::isfinite(json_number_value(value)))
+            json_t *value = json_array_get(heldValues, i);
+            if (json_is_number(value) && std::isfinite(json_number_value(value))) {
                 params[mixIds[i]].setValue(std::clamp(float(json_number_value(value)), 0.f, 1.f));
+            }
         }
         settingsSyncRequested.store(true);
     }
 
-    void fromJson(json_t* root) override {
+    void fromJson(json_t *root) override {
         // Rack loads parameters before module data. Preserve the physical knob
         // position of the earlier 0..1 density control, including versionless patches.
-        json_t* version = json_object_get(json_object_get(root, "data"), "beadsVersion");
+        json_t *version = json_object_get(json_object_get(root, "data"), "beadsVersion");
         const bool legacy = !version || (json_is_integer(version) && json_integer_value(version) == 1);
         bool hasDensity = false;
-        json_t* values = json_object_get(root, "params");
-        size_t i; json_t* value;
+        json_t *values = json_object_get(root, "params");
+        size_t i;
+        json_t *value;
         json_array_foreach(values, i, value) {
-            json_t* id = json_object_get(value, "id");
-            if (!id) id = json_object_get(value, "paramId");
+            json_t *id = json_object_get(value, "id");
+            if (!id) {
+                id = json_object_get(value, "paramId");
+            }
             const int64_t paramId = json_is_integer(id) ? json_integer_value(id) : int64_t(i);
-            if (paramId == DENSITY_PARAM && json_is_number(json_object_get(value, "value"))) hasDensity = true;
+            if (paramId == DENSITY_PARAM && json_is_number(json_object_get(value, "value"))) {
+                hasDensity = true;
+            }
         }
         Module::fromJson(root);
-        if (legacy && hasDensity)
+        if (legacy && hasDensity) {
             params[DENSITY_PARAM].setValue(2.f * audible_beads::ControlLayer::clamp01(params[DENSITY_PARAM].getValue()) - 1.f);
+        }
     }
 
     void syncSettingParams() {
         const int ids[4] = {INPUT_GAIN_PARAM, FEEDBACK_CV_AMOUNT_PARAM, DRY_WET_CV_AMOUNT_PARAM, REVERB_CV_AMOUNT_PARAM};
         const bool loaded = settingsSyncRequested.exchange(false);
         for (int i = 0; i < 4; ++i) {
-            auto& setting = i == 0 ? menuManualGain : menuAssignmentAmounts[i - 1];
+            auto &setting = i == 0 ? menuManualGain : menuAssignmentAmounts[i - 1];
             float value = audible_beads::ControlLayer::clamp01(params[ids[i]].getValue());
             if (loaded) {
                 // A knob can be moved before the first callback (paused Rack).
                 // Loaded settings have matching parameter/mirror values.
                 if (value != audible_beads::ControlLayer::clamp01(setting.load())) {
                     setting.store(value);
-                    if (i == 0) menuGainManual.store(1);
-                    else menuAssignment.store(3);
+                    if (i == 0) {
+                        menuGainManual.store(1);
+                    } else {
+                        menuAssignment.store(3);
+                    }
                 }
                 lastSettingParams[i] = value;
             } else if (value != lastSettingParams[i]) {
                 setting.store(value);
-                if (i == 0) menuGainManual.store(1);
-                else menuAssignment.store(3);
+                if (i == 0) {
+                    menuGainManual.store(1);
+                } else {
+                    menuAssignment.store(3);
+                }
             } else {
                 value = audible_beads::ControlLayer::clamp01(setting.load());
                 params[ids[i]].setValue(value);
@@ -355,16 +472,21 @@ struct Beads : Module {
         }
     }
 
-    void process(const ProcessArgs& args) override {
+    void process(const ProcessArgs &args) override {
         // Only the audio thread touches engine state. Menu actions cross threads
         // as validated scalar atomics and take effect at the next process call.
         if (resetRequested.exchange(0, std::memory_order_relaxed)) {
             engine->reset();
-            for (auto& s : smooth) s = audible_beads::ControlLayer::Smoother{};
-            grainBase[0] = .25f; grainBase[1] = grainBase[2] = .5f; grainBase[3] = 0.f;
+            for (auto &s : smooth) {
+                s = audible_beads::ControlLayer::Smoother{};
+            }
+            grainBase[0] = .25f;
+            grainBase[1] = grainBase[2] = .5f;
+            grainBase[3] = 0.f;
             grainAmount[0] = grainAmount[1] = grainAmount[2] = grainAmount[3] = 0.f;
             grainCv[0] = grainCv[1] = grainCv[2] = grainCv[3] = 0.f;
-            densityBase = .625f; densityCv = assignCv = 0.f;
+            densityBase = .625f;
+            densityCv = assignCv = 0.f;
             for (int i = 0; i < 3; ++i) {
                 mixPots[i].Init(1.f, 0.f);
                 const int ids[3] = {FEEDBACK_PARAM, DRY_WET_PARAM, REVERB_PARAM};
@@ -376,22 +498,33 @@ struct Beads : Module {
             lockedMixMask.store(0);
             frozenBuffers.cancelWrite();
             savedBufferVersion = copyingBufferVersion = UINT64_MAX;
-            snapshotOffset = 0; frozenStableSeconds = 0.;
+            snapshotOffset = 0;
+            frozenStableSeconds = 0.;
             seedGateLight = freezeGateLight = false;
             seedIndicatorPhase = 0.;
-            controlPhase = uiPhase = 0.; restartGainSamples = 0; timeHysteresis = 0.f;
-            for (int i = 0; i < 4; ++i) { down[i] = previousButton[i] = false; held[i] = 0; }
+            controlPhase = uiPhase = 0.;
+            restartGainSamples = 0;
+            timeHysteresis = 0.f;
+            for (int i = 0; i < 4; ++i) {
+                down[i] = previousButton[i] = false;
+                held[i] = 0;
+            }
         }
         uint64_t appliedRevision = appliedBufferRevision.load();
         const uint64_t pendingRevision = pendingBuffers.revision();
-        if (pendingRevision && pendingRevision != appliedRevision) pendingBuffers.read([&](const audible_beads::FrozenBuffer& buffer, uint64_t revision) {
-            if (revision == appliedRevision) return;
-            if (engine->restoreFrozenBuffer(buffer)) {
-                menuMedia.store(buffer.media); menuFreezeLatch.store(1);
-            }
-            appliedRevision = revision;
-            appliedBufferRevision.store(revision);
-        });
+        if (pendingRevision && pendingRevision != appliedRevision) {
+            pendingBuffers.read([&](const audible_beads::FrozenBuffer &buffer, uint64_t revision) {
+                if (revision == appliedRevision) {
+                    return;
+                }
+                if (engine->restoreFrozenBuffer(buffer)) {
+                    menuMedia.store(buffer.media);
+                    menuFreezeLatch.store(1);
+                }
+                appliedRevision = revision;
+                appliedBufferRevision.store(revision);
+            });
+        }
         syncSettingParams();
         media = std::clamp(menuMedia.load(std::memory_order_relaxed), 0, 3);
         seedLocked = menuSeedLocked.load(std::memory_order_relaxed) != 0;
@@ -400,7 +533,9 @@ struct Beads : Module {
         gateOutput = menuGateOutput.load(std::memory_order_relaxed) != 0;
         freezeLatch = menuFreezeLatch.load(std::memory_order_relaxed) != 0;
         manualGain = menuManualGain.load(std::memory_order_relaxed);
-        for (int i = 0; i < 3; ++i) assignmentAmounts[i] = std::clamp(menuAssignmentAmounts[i].load(std::memory_order_relaxed), 0.f, 1.f);
+        for (int i = 0; i < 3; ++i) {
+            assignmentAmounts[i] = std::clamp(menuAssignmentAmounts[i].load(std::memory_order_relaxed), 0.f, 1.f);
+        }
         const bool buttonsChanged = updateButtons(args);
         const bool rateChanged = args.sampleRate != lastSampleRate;
         if (rateChanged) {
@@ -416,30 +551,43 @@ struct Beads : Module {
             const int cvIds[4] = {TIME_CV_INPUT, SIZE_CV_INPUT, SHAPE_CV_INPUT, PITCH_CV_INPUT};
             for (int i = 0; i < 4; ++i) {
                 float pot = audible_beads::ControlLayer::clamp01(params[baseIds[i]].getValue());
-                if (i == 3) pot = audible_beads::ControlLayer::pitchPot(pot);
+                if (i == 3) {
+                    pot = audible_beads::ControlLayer::pitchPot(pot);
+                }
                 smooth[i].process(pot, .05f);
                 if (i == 0) {
                     float error = smooth[i].value - timeHysteresis;
-                    if (error > .001f) timeHysteresis = smooth[i].value - .001f;
-                    else if (error < -.001f) timeHysteresis = smooth[i].value + .001f;
+                    if (error > .001f) {
+                        timeHysteresis = smooth[i].value - .001f;
+                    } else if (error < -.001f) {
+                        timeHysteresis = smooth[i].value + .001f;
+                    }
                     grainBase[i] = timeHysteresis;
-                } else grainBase[i] = smooth[i].value;
-                smooth[i + 4].process(audible_beads::ControlLayer::attenuverterPotLaw(
-                    params[amountIds[i]].getValue()), .05f);
+                } else {
+                    grainBase[i] = smooth[i].value;
+                }
+                smooth[i + 4].process(audible_beads::ControlLayer::attenuverterPotLaw(params[amountIds[i]].getValue()), .05f);
                 grainAmount[i] = smooth[i + 4].value;
-                float cv = inputs[cvIds[i]].isConnected()
-                    ? audible_beads::ControlLayer::finite(inputs[cvIds[i]].getVoltage()) : 0.f;
+                float cv =
+                    inputs[cvIds[i]].isConnected() ? audible_beads::ControlLayer::finite(inputs[cvIds[i]].getVoltage()) : 0.f;
                 if (i < 3) {
                     smooth[12 + i].process(cv / 5.f, .5f);
                     grainCv[i] = smooth[12 + i].value;
-                } else grainCv[i] = cv * 12.f;
+                } else {
+                    grainCv[i] = cv * 12.f;
+                }
             }
             smooth[8].process(.5f * (audible_beads::ControlLayer::attenuverter(params[DENSITY_PARAM].getValue()) + 1.f), .05f);
             densityBase = smooth[8].value;
-            densityCv = inputs[DENSITY_CV_INPUT].isConnected()
-                ? std::clamp(audible_beads::ControlLayer::finite(inputs[DENSITY_CV_INPUT].getVoltage()) / 5.f, -1.f, 1.f) : 0.f;
-            smooth[17].process(inputs[ASSIGN_CV_INPUT].isConnected()
-                ? std::clamp(audible_beads::ControlLayer::finite(inputs[ASSIGN_CV_INPUT].getVoltage()) / 5.f, -1.f, 1.f) : 0.f, .1f);
+            densityCv =
+                inputs[DENSITY_CV_INPUT].isConnected()
+                    ? std::clamp(audible_beads::ControlLayer::finite(inputs[DENSITY_CV_INPUT].getVoltage()) / 5.f, -1.f, 1.f)
+                    : 0.f;
+            smooth[17].process(
+                inputs[ASSIGN_CV_INPUT].isConnected()
+                    ? std::clamp(audible_beads::ControlLayer::finite(inputs[ASSIGN_CV_INPUT].getVoltage()) / 5.f, -1.f, 1.f)
+                    : 0.f,
+                .1f);
             assignCv = smooth[17].value;
             for (int i = 0; i < 3; ++i) {
                 smooth[9 + i].process(params[mixIds[i]].getValue(), .05f);
@@ -450,7 +598,9 @@ struct Beads : Module {
         const bool uiTick = uiPhase >= 1.0;
         if (uiTick) {
             uiPhase -= 1.0;
-            for (auto& pot : mixPots) pot.ProcessUIRate();
+            for (auto &pot : mixPots) {
+                pot.ProcessUIRate();
+            }
         }
         if (down[0] && mixPots[0].editing_hidden_parameter()) {
             gainEdited = true;
@@ -460,19 +610,22 @@ struct Beads : Module {
             menuGainManual.store(1, std::memory_order_relaxed);
         }
         if (down[3]) {
-            for (int i = 0; i < 3; ++i) if (mixPots[i].editing_hidden_parameter()) {
-                assignmentEdited[i] = true;
-                assignmentAmounts[i] = mixPots[i].hidden_parameter();
-                menuAssignmentAmounts[i].store(assignmentAmounts[i], std::memory_order_relaxed);
-                assignment = 3; menuAssignment.store(3, std::memory_order_relaxed);
+            for (int i = 0; i < 3; ++i) {
+                if (mixPots[i].editing_hidden_parameter()) {
+                    assignmentEdited[i] = true;
+                    assignmentAmounts[i] = mixPots[i].hidden_parameter();
+                    menuAssignmentAmounts[i].store(assignmentAmounts[i], std::memory_order_relaxed);
+                    assignment = 3;
+                    menuAssignment.store(3, std::memory_order_relaxed);
+                }
             }
         }
         audible_beads::Controls controls;
         controls.media = media;
         controls.gain = gainManual ? uint8_t(std::clamp(int(std::lround(manualGain * 255.f)), 1, 255)) : 0;
         controls.freezeLatch = freezeLatch;
-        controls.seed = seedLocked ? audible_beads::ControlLayer::SEED_LOCKED :
-            (down[2] ? audible_beads::ControlLayer::SEED_ON : audible_beads::ControlLayer::SEED_OFF);
+        controls.seed = seedLocked ? audible_beads::ControlLayer::SEED_LOCKED
+                                   : (down[2] ? audible_beads::ControlLayer::SEED_ON : audible_beads::ControlLayer::SEED_OFF);
         controls.restartGain = restartGainSamples > 0;
         auto grain = [&](int index, bool pitch) {
             float pot = grainBase[index];
@@ -484,14 +637,20 @@ struct Beads : Module {
                 controls.grain.pitch.attenuverter = amount;
                 controls.grain.pitch.has_cv = inputs[PITCH_CV_INPUT].isConnected();
             } else {
-                beads::RandomizedParameter* p = index == 0 ? &controls.grain.time :
-                    index == 1 ? &controls.grain.size : &controls.grain.shape;
+                beads::RandomizedParameter *p = index == 0   ? &controls.grain.time
+                                                : index == 1 ? &controls.grain.size
+                                                             : &controls.grain.shape;
                 const int cvIds[3] = {TIME_CV_INPUT, SIZE_CV_INPUT, SHAPE_CV_INPUT};
-                p->base = pot; p->cv = cv; p->attenuverter = amount;
+                p->base = pot;
+                p->cv = cv;
+                p->attenuverter = amount;
                 p->has_cv = inputs[cvIds[index]].isConnected();
             }
         };
-        grain(0, false); grain(1, false); grain(2, false); grain(3, true);
+        grain(0, false);
+        grain(1, false);
+        grain(2, false);
+        grain(3, true);
         controls.density.base = audible_beads::ControlLayer::clamp01(densityBase);
         controls.density.cv = densityCv;
         controls.mix.feedback = mixValue(0);
@@ -508,24 +667,27 @@ struct Beads : Module {
         input.freeze = inputs[FREEZE_INPUT].isConnected() ? inputs[FREEZE_INPUT].getVoltage() : 0.f;
         seedGateLight = updateGateLight(seedGateLight, input.seedConnected ? input.seed : 0.f);
         freezeGateLight = updateGateLight(freezeGateLight, input.freeze);
-        auto out = supportedRate ? engine->process(input, controls,
-            outputs[AUDIO_R_OUTPUT].isConnected() || gateOutput) : audible_beads::Output{};
+        auto out = supportedRate ? engine->process(input, controls, outputs[AUDIO_R_OUTPUT].isConnected() || gateOutput)
+                                 : audible_beads::Output{};
         statusSynth.store(engine->synthMode(), std::memory_order_relaxed);
         updateFrozenSnapshot(args.sampleTime);
-        if (restartGainSamples && supportedRate) --restartGainSamples;
+        if (restartGainSamples && supportedRate) {
+            --restartGainSamples;
+        }
         outputs[AUDIO_L_OUTPUT].setVoltage(out.left);
         outputs[AUDIO_R_OUTPUT].setVoltage(out.right);
         outputs[AUDIO_L_OUTPUT].setChannels(1);
         outputs[AUDIO_R_OUTPUT].setChannels(1);
         seedIndicatorPhase += double(args.sampleTime) / 2.048;
-        if (seedIndicatorPhase >= 1.) seedIndicatorPhase -= 1.;
+        if (seedIndicatorPhase >= 1.) {
+            seedIndicatorPhase -= 1.;
+        }
         if (uiTick || buttonsChanged || rateChanged || sampleIndex == 0) {
             lights[FREEZE_LIGHT].setBrightness(freezeLatch || freezeGateLight ? 1.f : 0.f);
             // A held/gated button is solid; a latched button slowly breathes.
             // Keep the trough visible on the light-colored hardware-style cap.
             const float triangle = float(1. - std::fabs(2. * seedIndicatorPhase - 1.));
-            lights[SEED_LIGHT].setBrightness(down[2] || seedGateLight ? 1.f :
-                (seedLocked ? .55f + .45f * triangle : 0.f));
+            lights[SEED_LIGHT].setBrightness(down[2] || seedGateLight ? 1.f : (seedLocked ? .55f + .45f * triangle : 0.f));
             lights[ASSIGN_1_LIGHT].setBrightness(assignment == 0 ? .8f : assignment == 3 ? assignmentAmounts[0] : 0.f);
             lights[ASSIGN_2_LIGHT].setBrightness(assignment == 1 ? .8f : assignment == 3 ? assignmentAmounts[1] : 0.f);
             lights[ASSIGN_3_LIGHT].setBrightness(assignment == 2 ? .8f : assignment == 3 ? assignmentAmounts[2] : 0.f);
@@ -537,9 +699,8 @@ struct Beads : Module {
             lights[MEDIA_R_LIGHT].setBrightness(red[media] * mediaBrightness);
             lights[MEDIA_G_LIGHT].setBrightness(green[media] * mediaBrightness);
             lights[MEDIA_B_LIGHT].setBrightness(blue[media] * mediaBrightness);
-            lights[VU_LIGHT].setBrightness(engine->adjustingGain()
-                ? ((int(seedIndicatorPhase * 16.) & 1) ? .5f : 0.f)
-                : float(engine->vuMeter()) / 255.f);
+            lights[VU_LIGHT].setBrightness(engine->adjustingGain() ? ((int(seedIndicatorPhase * 16.) & 1) ? .5f : 0.f)
+                                                                   : float(engine->vuMeter()) / 255.f);
             lights[ERROR_LIGHT].setBrightness(supportedRate ? 0.f : 1.f);
         }
         ++sampleIndex;
@@ -547,37 +708,53 @@ struct Beads : Module {
 
     void updateFrozenSnapshot(double sampleTime) {
         if (!engine->hasFrozenBuffer()) {
-            if (savedBufferVersion != UINT64_MAX) frozenBuffers.clear();
+            if (savedBufferVersion != UINT64_MAX) {
+                frozenBuffers.clear();
+            }
             savedBufferVersion = copyingBufferVersion = UINT64_MAX;
-            if (completedBufferRevision.load() != appliedBufferRevision.load())
+            if (completedBufferRevision.load() != appliedBufferRevision.load()) {
                 completedBufferRevision.store(appliedBufferRevision.load());
-            frozenBuffers.cancelWrite(); snapshotOffset = 0; frozenStableSeconds = 0.;
+            }
+            frozenBuffers.cancelWrite();
+            snapshotOffset = 0;
+            frozenStableSeconds = 0.;
             return;
         }
         const auto version = engine->frozenBufferVersion();
-        if (savedBufferVersion == version) return;
+        if (savedBufferVersion == version) {
+            return;
+        }
         if (copyingBufferVersion != version) {
             copyingBufferVersion = version;
-            frozenBuffers.cancelWrite(); snapshotOffset = 0; frozenStableSeconds = 0.;
+            frozenBuffers.cancelWrite();
+            snapshotOffset = 0;
+            frozenStableSeconds = 0.;
         }
         // Tail samples must stop changing before a multi-callback snapshot.
-        if (!engine->frozenTailComplete()) return;
+        if (!engine->frozenTailComplete()) {
+            return;
+        }
         frozenStableSeconds += sampleTime;
-        if (frozenStableSeconds < .020) return;
+        if (frozenStableSeconds < .020) {
+            return;
+        }
         constexpr size_t total = 3 * audible_beads::FrozenBuffer::bankBytes;
         constexpr size_t chunk = 4096;
-        if (frozenBuffers.publishStep([&](audible_beads::FrozenBuffer& buffer) {
-            const size_t bytes = std::min(chunk, total - snapshotOffset);
-            if (!engine->captureFrozenBuffer(buffer, snapshotOffset, bytes)) return false;
-            snapshotOffset += bytes; snapshotBytesCopied += bytes;
-            return snapshotOffset == total;
-        })) {
+        if (frozenBuffers.publishStep([&](audible_beads::FrozenBuffer &buffer) {
+                const size_t bytes = std::min(chunk, total - snapshotOffset);
+                if (!engine->captureFrozenBuffer(buffer, snapshotOffset, bytes)) {
+                    return false;
+                }
+                snapshotOffset += bytes;
+                snapshotBytesCopied += bytes;
+                return snapshotOffset == total;
+            })) {
             savedBufferVersion = version;
             completedBufferRevision.store(appliedBufferRevision.load());
         }
     }
 
-    void processBypass(const ProcessArgs&) override {
+    void processBypass(const ProcessArgs &) override {
         audible_beads::Input input;
         input.leftConnected = inputs[AUDIO_L_INPUT].isConnected();
         input.rightConnected = inputs[AUDIO_R_INPUT].isConnected();
@@ -598,7 +775,9 @@ struct Beads : Module {
     }
 
     static bool updateGateLight(bool high, float volts) {
-        if (!std::isfinite(volts)) volts = 0.f;
+        if (!std::isfinite(volts)) {
+            volts = 0.f;
+        }
         return high ? volts > .2919571f : volts >= .3804290f;
     }
 
@@ -612,7 +791,9 @@ struct Beads : Module {
             smooth[9 + i].value = value;
             mixPots[i].Init(1.f, 0.f);
             mixPots[i].ProcessControlRate(value);
-        } else mixPots[i].Unlock();
+        } else {
+            mixPots[i].Unlock();
+        }
         lockedMixMask.fetch_and(~(1u << i));
     }
 
@@ -622,35 +803,54 @@ struct Beads : Module {
         mixPots[i].Lock();
     }
 
-    bool updateButtons(const ProcessArgs& args) {
+    bool updateButtons(const ProcessArgs &args) {
         bool changed = false;
         const int ids[4] = {MEDIA_PARAM, FREEZE_PARAM, SEED_PARAM, ASSIGN_PARAM};
         bool pressedNow[4]{};
-        for (int i = 0; i < 4; ++i) pressedNow[i] = params[ids[i]].getValue() > .5f;
+        for (int i = 0; i < 4; ++i) {
+            pressedNow[i] = params[ids[i]].getValue() > .5f;
+        }
         for (int i = 0; i < 4; ++i) {
             if (pressedNow[i] && !previousButton[i]) {
                 changed = true;
-                down[i] = true; held[i] = 0;
-                if (i == 1) freezeBeforePress = freezeLatch;
+                down[i] = true;
+                held[i] = 0;
+                if (i == 1) {
+                    freezeBeforePress = freezeLatch;
+                }
                 if (!comboConsumed && ((i == 1 && pressedNow[2]) || (i == 2 && pressedNow[1]))) {
-                    seedLocked = true; menuSeedLocked.store(1); comboConsumed = true;
-                    freezeLatch = freezeBeforePress; menuFreezeLatch.store(freezeLatch);
+                    seedLocked = true;
+                    menuSeedLocked.store(1);
+                    comboConsumed = true;
+                    freezeLatch = freezeBeforePress;
+                    menuFreezeLatch.store(freezeLatch);
                 } else if (!comboConsumed && ((i == 1 && pressedNow[3]) || (i == 3 && pressedNow[1]))) {
                     // Rack persistence follows patch saving; consume the chord.
                     comboConsumed = true;
-                    freezeLatch = freezeBeforePress; menuFreezeLatch.store(freezeLatch);
+                    freezeLatch = freezeBeforePress;
+                    menuFreezeLatch.store(freezeLatch);
                 } else if (!comboConsumed && ((i == 2 && pressedNow[3]) || (i == 3 && pressedNow[2]))) {
-                    gateOutput = !gateOutput; menuGateOutput.store(gateOutput); comboConsumed = true;
+                    gateOutput = !gateOutput;
+                    menuGateOutput.store(gateOutput);
+                    comboConsumed = true;
                 }
                 if (i == 2 && !comboConsumed && seedLocked) {
-                    seedLocked = false; menuSeedLocked.store(0);
+                    seedLocked = false;
+                    menuSeedLocked.store(0);
                 }
                 if (i == 1 && !comboConsumed) {
-                    freezeLatch = !freezeLatch; menuFreezeLatch.store(freezeLatch);
+                    freezeLatch = !freezeLatch;
+                    menuFreezeLatch.store(freezeLatch);
                 }
-                if (i == 0) { lockMixKnob(0); gainEdited = false; }
+                if (i == 0) {
+                    lockMixKnob(0);
+                    gainEdited = false;
+                }
                 if (i == 3) {
-                    for (int k = 0; k < 3; ++k) { lockMixKnob(k); assignmentEdited[k] = false; }
+                    for (int k = 0; k < 3; ++k) {
+                        lockMixKnob(k);
+                        assignmentEdited[k] = false;
+                    }
                 }
             }
             if (down[i] && pressedNow[i]) {
@@ -669,75 +869,102 @@ struct Beads : Module {
                             media = (media + 3) & 3;
                             menuMedia.store(media);
                         }
-                    }
-                    else if (i == 2) {
+                    } else if (i == 2) {
                         // Firmware recognizes a four-second hold on release.
                         seedLocked = held[i] >= uint64_t(args.sampleRate * 4.0);
                         menuSeedLocked.store(seedLocked);
                     } else if (i == 3) {
                         bool edited = assignmentEdited[0] || assignmentEdited[1] || assignmentEdited[2];
-                        if (!edited) { assignment = assignment == 3 ? 0 : (assignment + 1) % 3; menuAssignment.store(assignment); }
+                        if (!edited) {
+                            assignment = assignment == 3 ? 0 : (assignment + 1) % 3;
+                            menuAssignment.store(assignment);
+                        }
                     }
                 }
-                if (i == 0) unlockMixKnob(0);
-                if (i == 3) for (int k = 0; k < 3; ++k) unlockMixKnob(k);
+                if (i == 0) {
+                    unlockMixKnob(0);
+                }
+                if (i == 3) {
+                    for (int k = 0; k < 3; ++k) {
+                        unlockMixKnob(k);
+                    }
+                }
                 held[i] = 0;
             }
             previousButton[i] = pressedNow[i];
         }
         // ASSIGN+FREEZE is the firmware autosave gesture. Rack saves frozen
         // audio with the patch; consume the chord without individual actions.
-        if (comboConsumed && !pressedNow[1] && !pressedNow[2] && !pressedNow[3]) comboConsumed = false;
+        if (comboConsumed && !pressedNow[1] && !pressedNow[2] && !pressedNow[3]) {
+            comboConsumed = false;
+        }
         return changed;
     }
 
-    void addMenuItems(Menu* menu) {
+    void addMenuItems(Menu *menu) {
         menu->addChild(createMenuItem("Load buffer WAV...", "", [=] { loadBufferWav(); }));
         menu->addChild(createMenuItem("Save frozen buffer WAV...", "", [=] { saveBufferWav(); }));
-        menu->addChild(createMenuLabel(statusSynth.load() ? "Wavetable synthesis (FREEZE stops new grains)" : "Recorded audio (FREEZE holds the buffer)"));
-        menu->addChild(createSubmenuItem("Edit knobs", "", [=](Menu* m) {
-            const char* labels[] = {"Normal mix controls", "Input gain (red knob)", "CV assignment amounts (green knobs)"};
-            for (int view = 0; view < 3; ++view)
-                m->addChild(createCheckMenuItem(labels[view], "", [=] { return editView.load() == view; }, [=] { editView.store(view); }));
-        }));
-        menu->addChild(createSubmenuItem("Media / quality", "", [=](Menu* m) {
-            const char* labels[] = {"Scorched cassette", "Sunny tape", "Cold digital", "Bright digital"};
-            for (int q = 0; q < 4; ++q) m->addChild(createCheckMenuItem(
-                labels[q], "", [=] { return menuMedia.load() == q; }, [=] { menuMedia.store(q); }));
-        }));
-        menu->addChild(createCheckMenuItem("Seed button latched", "", [=] { return menuSeedLocked.load(); },
-            [=] { menuSeedLocked.store(!menuSeedLocked.load()); }));
-        menu->addChild(createCheckMenuItem("Manual input gain", "", [=] { return menuGainManual.load(); },
-            [=] { menuGainManual.store(!menuGainManual.load()); }));
-        menu->addChild(createSubmenuItem("Manual input gain value", "", [=](Menu* m) {
-            for (int i = 0; i < 5; ++i) {
-                const float value = kMenuGainValues[i];
-                m->addChild(createCheckMenuItem(kMenuGainLabels[i], "",
-                [=] { return std::fabs(menuManualGain.load() - value) < .005f; }, [=] {
-                    getParamQuantity(INPUT_GAIN_PARAM)->setImmediateValue(value);
-                    menuManualGain.store(value); menuGainManual.store(1);
-                }));
+        menu->addChild(createMenuLabel(statusSynth.load() ? "Wavetable synthesis (FREEZE stops new grains)"
+                                                          : "Recorded audio (FREEZE holds the buffer)"));
+        menu->addChild(createSubmenuItem("Edit knobs", "", [=](Menu *m) {
+            const char *labels[] = {"Normal mix controls", "Input gain (red knob)", "CV assignment amounts (green knobs)"};
+            for (int view = 0; view < 3; ++view) {
+                m->addChild(createCheckMenuItem(
+                    labels[view], "", [=] { return editView.load() == view; }, [=] { editView.store(view); }));
             }
         }));
-        menu->addChild(createSubmenuItem("CV assignment", "", [=](Menu* m) {
-            const char* labels[] = {"Feedback", "Dry/wet", "Reverb", "Custom amounts"};
-            for (int a = 0; a < 3; ++a) m->addChild(createCheckMenuItem(labels[a], "",
-                [=] { return menuAssignment.load() == a; }, [=] { menuAssignment.store(a); }));
-            m->addChild(createSubmenuItem(labels[3], "", [=](Menu* custom) {
-                const char* destinations[] = {"Feedback amount", "Dry/wet amount", "Reverb amount"};
-                for (int k = 0; k < 3; ++k) custom->addChild(createSubmenuItem(destinations[k], "", [=](Menu* amounts) {
-                    for (int j = 0; j < 5; ++j) {
-                        const float value = kMenuAmountValues[j];
-                        amounts->addChild(createCheckMenuItem(kMenuAmountLabels[j], "",
-                        [=] { return std::fabs(menuAssignmentAmounts[k].load() - value) < .005f; }, [=] {
-                            getParamQuantity(FEEDBACK_CV_AMOUNT_PARAM + k)->setImmediateValue(value);
-                            menuAssignmentAmounts[k].store(value); menuAssignment.store(3);
-                        }));
-                    }
-                }));
+        menu->addChild(createSubmenuItem("Media / quality", "", [=](Menu *m) {
+            const char *labels[] = {"Scorched cassette", "Sunny tape", "Cold digital", "Bright digital"};
+            for (int q = 0; q < 4; ++q) {
+                m->addChild(
+                    createCheckMenuItem(labels[q], "", [=] { return menuMedia.load() == q; }, [=] { menuMedia.store(q); }));
+            }
+        }));
+        menu->addChild(createCheckMenuItem(
+            "Seed button latched", "", [=] { return menuSeedLocked.load(); },
+            [=] { menuSeedLocked.store(!menuSeedLocked.load()); }));
+        menu->addChild(createCheckMenuItem(
+            "Manual input gain", "", [=] { return menuGainManual.load(); },
+            [=] { menuGainManual.store(!menuGainManual.load()); }));
+        menu->addChild(createSubmenuItem("Manual input gain value", "", [=](Menu *m) {
+            for (int i = 0; i < 5; ++i) {
+                const float value = kMenuGainValues[i];
+                m->addChild(createCheckMenuItem(
+                    kMenuGainLabels[i], "", [=] { return std::fabs(menuManualGain.load() - value) < .005f; },
+                    [=] {
+                        getParamQuantity(INPUT_GAIN_PARAM)->setImmediateValue(value);
+                        menuManualGain.store(value);
+                        menuGainManual.store(1);
+                    }));
+            }
+        }));
+        menu->addChild(createSubmenuItem("CV assignment", "", [=](Menu *m) {
+            const char *labels[] = {"Feedback", "Dry/wet", "Reverb", "Custom amounts"};
+            for (int a = 0; a < 3; ++a) {
+                m->addChild(createCheckMenuItem(
+                    labels[a], "", [=] { return menuAssignment.load() == a; }, [=] { menuAssignment.store(a); }));
+            }
+            m->addChild(createSubmenuItem(labels[3], "", [=](Menu *custom) {
+                const char *destinations[] = {"Feedback amount", "Dry/wet amount", "Reverb amount"};
+                for (int k = 0; k < 3; ++k) {
+                    custom->addChild(createSubmenuItem(destinations[k], "", [=](Menu *amounts) {
+                        for (int j = 0; j < 5; ++j) {
+                            const float value = kMenuAmountValues[j];
+                            amounts->addChild(createCheckMenuItem(
+                                kMenuAmountLabels[j], "",
+                                [=] { return std::fabs(menuAssignmentAmounts[k].load() - value) < .005f; },
+                                [=] {
+                                    getParamQuantity(FEEDBACK_CV_AMOUNT_PARAM + k)->setImmediateValue(value);
+                                    menuAssignmentAmounts[k].store(value);
+                                    menuAssignment.store(3);
+                                }));
+                        }
+                    }));
+                }
             }));
         }));
-        menu->addChild(createCheckMenuItem("R output: grain gate", "", [=] { return menuGateOutput.load(); },
+        menu->addChild(createCheckMenuItem(
+            "R output: grain gate", "", [=] { return menuGateOutput.load(); },
             [=] { menuGateOutput.store(!menuGateOutput.load()); }));
     }
 };
@@ -747,8 +974,7 @@ struct Beads : Module {
 struct BeadsButtonLight : GreenLight {
     BeadsButtonLight() { box.size = Vec(22.f, 22.f); }
 };
-template <typename Base>
-struct BeadsKnob : Base {
+template <typename Base> struct BeadsKnob : Base {
     BeadsKnob() {
         // The printed envelope symbols sit close to the hardware knobs.
         // Suppress Rack's extra drop shadow so it does not obscure them.
@@ -763,9 +989,8 @@ struct BeadsMixKnob : Trimpot {
     BeadsMixKnob() { smooth = false; }
 };
 
-template <bool Gain>
-struct BeadsEditKnob : Trimpot {
-    void draw(const DrawArgs& args) override {
+template <bool Gain> struct BeadsEditKnob : Trimpot {
+    void draw(const DrawArgs &args) override {
         nvgBeginPath(args.vg);
         nvgCircle(args.vg, box.size.x / 2.f, box.size.y / 2.f, box.size.x / 2.f + 1.f);
         nvgStrokeWidth(args.vg, 2.f);
@@ -776,11 +1001,11 @@ struct BeadsEditKnob : Trimpot {
 };
 
 struct BeadsWidget : ModuleWidget {
-    ParamWidget* mixKnobs[3]{};
-    ParamWidget* gainKnob = nullptr;
-    ParamWidget* amountKnobs[3]{};
+    ParamWidget *mixKnobs[3]{};
+    ParamWidget *gainKnob = nullptr;
+    ParamWidget *amountKnobs[3]{};
 
-    explicit BeadsWidget(Beads* module) {
+    explicit BeadsWidget(Beads *module) {
         namespace p = audible_beads::panel;
         setModule(module);
         setPanel(Svg::load(asset::plugin(pluginInstance, "res/Beads.svg")));
@@ -810,13 +1035,19 @@ struct BeadsWidget : ModuleWidget {
         mixKnobs[0] = createParamCentered<BeadsMixKnob>(p::feedback(), module, Beads::FEEDBACK_PARAM);
         mixKnobs[1] = createParamCentered<BeadsMixKnob>(p::dryWet(), module, Beads::DRY_WET_PARAM);
         mixKnobs[2] = createParamCentered<BeadsMixKnob>(p::reverb(), module, Beads::REVERB_PARAM);
-        for (auto* knob : mixKnobs) addParam(knob);
+        for (auto *knob : mixKnobs) {
+            addParam(knob);
+        }
         gainKnob = createParamCentered<BeadsEditKnob<true>>(p::feedback(), module, Beads::INPUT_GAIN_PARAM);
-        gainKnob->visible = false; addParam(gainKnob);
+        gainKnob->visible = false;
+        addParam(gainKnob);
         amountKnobs[0] = createParamCentered<BeadsEditKnob<false>>(p::feedback(), module, Beads::FEEDBACK_CV_AMOUNT_PARAM);
         amountKnobs[1] = createParamCentered<BeadsEditKnob<false>>(p::dryWet(), module, Beads::DRY_WET_CV_AMOUNT_PARAM);
         amountKnobs[2] = createParamCentered<BeadsEditKnob<false>>(p::reverb(), module, Beads::REVERB_CV_AMOUNT_PARAM);
-        for (auto* knob : amountKnobs) { knob->visible = false; addParam(knob); }
+        for (auto *knob : amountKnobs) {
+            knob->visible = false;
+            addParam(knob);
+        }
         // Share the hardware VU aperture with the unsupported-rate diagnostic.
         addChild(createLightCentered<MediumLight<GreenRedLight>>(p::vuLight(), module, Beads::VU_LIGHT));
         addInput(createInputCentered<PJ301MPort>(p::timeCv(), module, Beads::TIME_CV_INPUT));
@@ -833,7 +1064,7 @@ struct BeadsWidget : ModuleWidget {
         addOutput(createOutputCentered<PJ301MPort>(p::outR(), module, Beads::AUDIO_R_OUTPUT));
     }
     void step() override {
-        auto* beads = dynamic_cast<Beads*>(module);
+        auto *beads = dynamic_cast<Beads *>(module);
         const int view = beads ? beads->editView.load() : 0;
         gainKnob->visible = view == 1;
         for (int i = 0; i < 3; ++i) {
@@ -842,10 +1073,12 @@ struct BeadsWidget : ModuleWidget {
         }
         ModuleWidget::step();
     }
-    void appendContextMenu(Menu* menu) override {
-        auto* beads = dynamic_cast<Beads*>(module);
-        if (beads) beads->addMenuItems(menu);
+    void appendContextMenu(Menu *menu) override {
+        auto *beads = dynamic_cast<Beads *>(module);
+        if (beads) {
+            beads->addMenuItems(menu);
+        }
     }
 };
 
-Model* modelBeads = createModel<Beads, BeadsWidget>("Beads");
+Model *modelBeads = createModel<Beads, BeadsWidget>("Beads");
