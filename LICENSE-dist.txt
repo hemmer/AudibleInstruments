@@ -1,6 +1,22 @@
+# Beads panel artwork (separate from the firmware license below)
+
+Beads panel artwork by Emilie Gillet, adapted for VCV Rack by Audible Instruments contributors.
+Source: https://github.com/pichenettes/eurorack/tree/f4cfa7697095a28d292bff758beb51deb49b5a86/beads/hardware_design/panel
+The upstream repository licenses hardware under Creative Commons Attribution-ShareAlike 3.0 Unported.
+License: https://creativecommons.org/licenses/by-sa/3.0/
+Legal code: https://creativecommons.org/licenses/by-sa/3.0/legalcode
+
+Applies to res/Beads.svg, including our adaptations.
+Changes: removed cut guides, added collection lettering and background, normalized dimensions,
+and reused the collection's lowercase title outlines. The original artwork remains credited to Emilie Gillet.
+No endorsement by Mutable Instruments is implied.
+
 # eurorack (applies to STM32F modules, not AVR modules)
 
 Copyright 2014-2019 Emilie Gillet.
+
+Beads DSP: Copyright 2014-2021 Emilie Gillet.
+Beads compatibility helpers from stmlib: Copyright 2012, 2015 Emilie Gillet.
 
 Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 

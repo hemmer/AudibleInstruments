@@ -87,6 +87,19 @@
       ]
     },
     {
+      "slug": "Beads",
+      "name": "Texture Synthesizer 2",
+      "description": "Based on Mutable Instruments Beads",
+      "manualUrl": "https://pichenettes.github.io/mutable-instruments-documentation/modules/beads/",
+      "tags": [
+        "Granular",
+        "Delay",
+        "Reverb",
+        "Oscillator",
+        "Hardware clone"
+      ]
+    },
+    {
       "slug": "Warps",
       "name": "Meta Modulator",
       "description": "Based on Mutable Instruments Warps",

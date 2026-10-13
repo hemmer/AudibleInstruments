@@ -29,6 +29,14 @@ SOURCES += eurorack/clouds/dsp/pvoc/phase_vocoder.cc
 SOURCES += eurorack/clouds/dsp/pvoc/stft.cc
 SOURCES += eurorack/clouds/resources.cc
 
+SOURCES += eurorack/beads/dsp/processor.cc
+SOURCES += eurorack/beads/dsp/synth.cc
+SOURCES += eurorack/beads/dsp/mu_law.cc
+SOURCES += eurorack/beads/dsp/delay_clock.cc
+SOURCES += eurorack/beads/dsp/delay_controller.cc
+SOURCES += eurorack/beads/dsp/trigger_generator.cc
+SOURCES += eurorack/beads/resources.cc
+
 SOURCES += eurorack/elements/dsp/exciter.cc
 SOURCES += eurorack/elements/dsp/ominous_voice.cc
 SOURCES += eurorack/elements/dsp/resonator.cc
@@ -79,9 +87,6 @@ SOURCES += eurorack/stages/segment_generator.cc
 SOURCES += eurorack/stages/ramp_extractor.cc
 SOURCES += eurorack/stages/resources.cc
 
-SOURCES += eurorack/stmlib/utils/random.cc
-SOURCES += eurorack/stmlib/dsp/atan.cc
-SOURCES += eurorack/stmlib/dsp/units.cc
 SOURCES += eurorack/marbles/random/t_generator.cc
 SOURCES += eurorack/marbles/random/x_y_generator.cc
 SOURCES += eurorack/marbles/random/output_channel.cc
