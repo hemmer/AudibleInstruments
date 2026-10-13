@@ -54,6 +54,8 @@ Based on [Veils](https://mutable-instruments.net/modules/veils), [Manual](https:
 
 ### Liquid Filter
 Based on [Ripples](https://mutable-instruments.net/modules/ripples), [Manual](https://mutable-instruments.net/modules/ripples/manual/)
+
+Ripples and Ripples v2 offer a right-click **Filter model** choice between the original circuit model and Economy TPT. The choice is saved with the patch; existing patches retain the original model. See [model details and validation](design/RIPPLES_TPT.md).
 - Virtual analog model provided by [Alright Devices](https://www.alrightdevices.com/) after successful crowdfunding.
 
 ### EQ Filter

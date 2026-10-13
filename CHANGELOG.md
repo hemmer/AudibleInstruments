@@ -1,4 +1,5 @@
 ### 2.1.0 (in development)
+- Add optional Economy TPT filter models to Ripples and Ripples v2 via their context menus; existing patches retain the original circuit model.
 - Add Percussive Synth
 - Fix Elements "Ominous voice" bug
 
