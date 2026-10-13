@@ -15,8 +15,28 @@ class BufferExchange {
     std::unique_ptr<std::array<Slot, 3>> slots_{new std::array<Slot, 3>};
     std::atomic<int> published_{-1};
     uint64_t nextRevision_ = 0;
+    std::atomic<uint64_t> announcedRevision_{0};
+    int staging_ = -1; // Publisher-only, never visible until complete.
 public:
-    void clear() { published_.store(-1); }
+    void clear() { published_.store(-1); announcedRevision_.store(0); }
+    uint64_t revision() const { return announcedRevision_.load(); }
+    void cancelWrite() { staging_ = -1; }
+    template<class Writer> bool publishStep(Writer writer) {
+        if (staging_ < 0) {
+            const int current = published_.load();
+            for (int i = 0; i < 3; ++i) {
+                if (i != current && !(*slots_)[i].readers.load()) { staging_ = i; break; }
+            }
+        }
+        if (staging_ < 0) return false;
+        auto& slot = (*slots_)[staging_];
+        if (!writer(slot.buffer)) return false;
+        slot.revision = ++nextRevision_;
+        published_.store(staging_);
+        announcedRevision_.store(slot.revision);
+        staging_ = -1;
+        return true;
+    }
     template<class Writer> bool publish(Writer writer) {
         const int current = published_.load();
         for (int i = 0; i < 3; ++i) {
@@ -25,6 +45,7 @@ public:
             if (!writer(slot.buffer)) return false;
             slot.revision = ++nextRevision_;
             published_.store(i);
+            announcedRevision_.store(slot.revision);
             return true;
         }
         return false;

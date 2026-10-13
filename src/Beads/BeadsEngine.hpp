@@ -84,8 +84,8 @@ struct FrozenBuffer {
 class BeadsEngine {
     // SRC objects are prepared once, never setRates()/destroyed in process().
     // Additional host rates can be prepared here without changing core rates.
-    static constexpr std::array<int, 9> hostRates_{{22050, 24000, 32000, 44100,
-                                                   48000, 88200, 96000, 176400, 192000}};
+    static constexpr std::array<int, 15> hostRates_{{11025, 12000, 22050, 24000, 32000, 44100,
+        48000, 88200, 96000, 176400, 192000, 352800, 384000, 705600, 768000}};
     static constexpr std::array<int, 3> engineRates_{{24000, 32000, 48000}};
     struct Converter {
         SpeexResamplerState* state = nullptr;
@@ -134,7 +134,7 @@ class BeadsEngine {
     struct GateOutput { uint64_t when; bool mode, high; };
 
     std::unique_ptr<Core> core_;
-    std::unique_ptr<std::array<Pair, 27>> converters_;
+    std::unique_ptr<std::array<Pair, hostRates_.size() * engineRates_.size()>> converters_;
     Pair* pair_ = nullptr;
     GainControl gain_;
     beads::Random random_;
@@ -147,6 +147,7 @@ class BeadsEngine {
     beads::Processor::Media media_ = beads::Processor::MEDIA_DIGITAL;
     bool seedHigh_ = false, freezeHigh_ = false, alignedSeed_ = false, alignedFreeze_ = false;
     bool restartHigh_ = false, outputMode_ = false, outputHigh_ = false;
+    uint8_t currentGain_ = 0;
     bool scheduledMode_ = false, scheduledHigh_ = false;
     bool bufferFrozen_ = false;
     bool requestedFrozen_ = false, coldFreezeLatch_ = false;
@@ -171,7 +172,7 @@ public:
     } stats;
 
     explicit BeadsEngine(uint32_t seed = 0x21u)
-        : core_(std::make_unique<Core>()), converters_(new std::array<Pair, 27>),
+        : core_(std::make_unique<Core>()), converters_(new std::array<Pair, hostRates_.size() * engineRates_.size()>),
           random_(seed), initialSeed_(seed) {
         for (size_t h = 0; h < hostRates_.size(); ++h)
             for (size_t e = 0; e < engineRates_.size(); ++e) {
@@ -228,13 +229,25 @@ public:
     bool adjustingGain() const { return gain_.adjusting(); }
     bool hasFrozenBuffer() const { return !synth_ && requestedFrozen_ && bufferFrozen_; }
     uint64_t frozenBufferVersion() const { return bufferVersion_; }
-    bool captureFrozenBuffer(FrozenBuffer& out) const {
+    bool frozenTailComplete() const {
+        return hasFrozenBuffer() && core_->processor.buffer_state().tail_write_ptr == 256;
+    }
+    // Caller restarts a partial copy if frozenBufferVersion() changes or thaw occurs.
+    bool captureFrozenBuffer(FrozenBuffer& out, size_t offset = 0,
+                             size_t bytes = 3 * FrozenBuffer::bankBytes) const {
         if (!hasFrozenBuffer()) return false;
         out.media = int(media_); out.mono = mono_;
         out.state = core_->processor.buffer_state();
         if (!out.valid()) return false;
-        for (size_t i = 0; i < 3; ++i)
-            std::memcpy(out.banks[i].data(), core_->delay[i], FrozenBuffer::bankBytes);
+        const size_t total = 3 * FrozenBuffer::bankBytes;
+        if (offset > total || bytes > total - offset) return false;
+        while (bytes) {
+            const size_t bank = offset / FrozenBuffer::bankBytes;
+            const size_t within = offset % FrozenBuffer::bankBytes;
+            const size_t count = std::min(bytes, FrozenBuffer::bankBytes - within);
+            std::memcpy(out.banks[bank].data() + within, core_->delay[bank] + within, count);
+            offset += count; bytes -= count;
+        }
         return true;
     }
     bool restoreFrozenBuffer(const FrozenBuffer& in) {
@@ -289,6 +302,7 @@ public:
 
     Output process(const Input& in, const Controls& requestedControls, bool rightOutputConnected = true) {
         const Controls controls = sanitize(requestedControls);
+        currentGain_ = controls.gain;
         // Hardware comparator thresholds from nominal 3.3 V feedback network.
         seedHigh_ = schmitt(seedHigh_, in.seedConnected ? in.seed : 0.f);
         freezeHigh_ = schmitt(freezeHigh_, in.freeze);
@@ -302,12 +316,13 @@ public:
         const bool wantMono = !(in.leftConnected && in.rightConnected);
         if (!frozen && (wantSynth != synth_ || wantMedia != media_ || wantMono != mono_)) {
             bufferFrozen_ = false; capturedTail_ = -1; ++bufferVersion_;
+            const bool resetGain = wantSynth != synth_ || wantMono != mono_;
             synth_ = wantSynth; mono_ = wantMono; media_ = wantMedia;
             // Firmware initializes Synth once and retains its voice/reverb
             // bookkeeping across returns. Both engines share the reverb RAM.
             if (!synth_) core_->processor.Configure(media_, mono_);
             selectTransport(); muteBlocks_ = 1000;
-            gain_.init(engineRate_, clipMode(), true);
+            gain_.init(engineRate_, clipMode(), resetGain);
         }
         if (in.leftConnected != leftConnected_ || in.rightConnected != rightConnected_) {
             leftConnected_ = in.leftConnected; rightConnected_ = in.rightConnected;
@@ -403,6 +418,11 @@ private:
                      - pair_->input.latency();
         if (host < 0) {
             Sample initial{};
+            // SRC startup silence is not a cable removal. Preserve AGC state
+            // through transport restarts, including media-only changes.
+            initial.input.leftConnected = leftConnected_;
+            initial.input.rightConnected = rightConnected_;
+            initial.controls.gain = currentGain_;
             // A restored latch also applies to the resampler's leading silence.
             // Otherwise the first block can overwrite the saved recording.
             initial.controls.freezeLatch = coldFreezeLatch_;
