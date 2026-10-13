@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
-#include <cstring>
 #include <memory>
 #include <new>
 #include <stdexcept>
@@ -17,16 +16,6 @@
 #include "GainControl.hpp"
 
 namespace audible_beads {
-
-// Zero the backing storage BEFORE running upstream's empty constructors, as
-// static firmware objects are initialized. No live C++ object is overwritten.
-template <typename T> std::unique_ptr<T> makeFirmwareObject() {
-    static_assert(alignof(T) <= alignof(std::max_align_t));
-    void* storage = ::operator new(sizeof(T));
-    std::memset(storage, 0, sizeof(T));
-    try { return std::unique_ptr<T>(new (storage) T); }
-    catch (...) { ::operator delete(storage); throw; }
-}
 
 template <typename T, size_t N> class Queue {
     std::array<T, N> data_{};
@@ -87,16 +76,28 @@ class BeadsEngine {
         void reset() { if (state) speex_resampler_reset_mem(state); }
         int latency() const { return state ? speex_resampler_get_input_latency(state) : 0; }
         int run(const beads::FloatFrame* in, int count, beads::FloatFrame* out, int capacity) {
+            if (count < 0 || count > 256 || capacity < count || capacity > 256) return -1;
             if (!state) { std::copy(in, in + count, out); return count; }
+            // Speex needs a float array; adjacent struct members are not one.
+            std::array<float, 512> interleavedInput, interleavedOutput;
+            for (int i = 0; i < count; ++i) {
+                interleavedInput[2 * i] = in[i].l;
+                interleavedInput[2 * i + 1] = in[i].r;
+            }
             spx_uint32_t consumed = count, produced = capacity;
             int error = speex_resampler_process_interleaved_float(state,
-                reinterpret_cast<const float*>(in), &consumed,
-                reinterpret_cast<float*>(out), &produced);
-            return error || consumed != static_cast<unsigned>(count) ? -1 : int(produced);
+                interleavedInput.data(), &consumed,
+                interleavedOutput.data(), &produced);
+            if (error || consumed != static_cast<unsigned>(count)) return -1;
+            for (unsigned i = 0; i < produced; ++i)
+                out[i] = {interleavedOutput[2 * i], interleavedOutput[2 * i + 1]};
+            return int(produced);
         }
     };
     struct Pair { Converter input, output; };
     struct Core {
+        // Value-initialize this outer type with Core(), not Core{}: its
+        // implicit constructor first zero-initializes firmware subobjects.
         beads::Processor processor;
         beads::Synth synth;
         alignas(4) uint8_t delay[3][256 * 1024];
@@ -140,7 +141,7 @@ public:
     } stats;
 
     explicit BeadsEngine(uint32_t seed = 0x21u)
-        : core_(makeFirmwareObject<Core>()), converters_(new std::array<Pair, 27>),
+        : core_(std::make_unique<Core>()), converters_(new std::array<Pair, 27>),
           random_(seed), initialSeed_(seed) {
         for (size_t h = 0; h < hostRates_.size(); ++h)
             for (size_t e = 0; e < engineRates_.size(); ++e) {
@@ -158,12 +159,11 @@ public:
     BeadsEngine& operator=(const BeadsEngine&) = delete;
 
     // Audio-thread reset reuses the existing buffers and prepared converters.
-    // Destroy before zeroing storage to reproduce firmware static initialization.
+    // Reconstruct with value-initialization to reproduce firmware static state.
     void reset() {
         Core* storage = core_.get();
         storage->~Core();
-        std::memset(static_cast<void*>(storage), 0, sizeof(Core));
-        new (storage) Core;
+        new (storage) Core();
         random_.Seed(initialSeed_);
         uint8_t* buffers[3] = {storage->delay[0], storage->delay[1], storage->delay[2]};
         storage->processor.Init(buffers, storage->reverb, &random_);
