@@ -2,6 +2,12 @@
 #include "Beads/BeadsEngine.hpp"
 #include "Beads/ControlLayer.hpp"
 #include "Beads/PanelLayout.hpp"
+#include "Beads/BufferExchange.hpp"
+#define DRWAV_API static
+#define DRWAV_PRIVATE static
+#define DR_WAV_IMPLEMENTATION
+#include "Beads/BufferFiles.hpp"
+#include <osdialog.h>
 #include "beads/pot_controller.h"
 
 #include <atomic>
@@ -34,6 +40,9 @@ struct Beads : Module {
     };
 
     std::unique_ptr<audible_beads::BeadsEngine> engine;
+    audible_beads::BufferExchange frozenBuffers, pendingBuffers;
+    uint64_t savedBufferVersion = UINT64_MAX;
+    std::atomic<uint64_t> appliedBufferRevision{0};
     bool down[4]{};
     uint64_t held[4]{};
     uint64_t sampleIndex = 0;
@@ -122,6 +131,7 @@ struct Beads : Module {
     }
 
     void onReset() override {
+        pendingBuffers.clear(); frozenBuffers.clear();
         menuMedia.store(3); menuSeedLocked.store(1); menuGainManual.store(0);
         menuAssignment.store(0); menuGateOutput.store(0); menuManualGain.store(1.f);
         menuAssignmentAmounts[0].store(1.f); menuAssignmentAmounts[1].store(0.f); menuAssignmentAmounts[2].store(.5f);
@@ -156,6 +166,76 @@ struct Beads : Module {
         json_object_set_new(root, "assignmentAmounts", amounts);
         json_object_set_new(root, "gateOutput", json_boolean(menuGateOutput.load() != 0));
         return root;
+    }
+
+    void queueBuffer(const audible_beads::FrozenBuffer& buffer) {
+        pendingBuffers.publish([&](audible_beads::FrozenBuffer& out) {
+            if (!buffer.valid()) return false;
+            out = buffer; return true;
+        });
+    }
+
+    void onAdd(const AddEvent&) override {
+        auto buffer = std::make_unique<audible_beads::FrozenBuffer>();
+        const auto path = system::join(getPatchStorageDirectory(), "frozen-buffer.bin");
+        if (audible_beads::readFrozenFile(path, *buffer)) queueBuffer(*buffer);
+    }
+
+    void onSave(const SaveEvent&) override {
+        auto buffer = std::make_unique<audible_beads::FrozenBuffer>();
+        bool available = false;
+        // A just-loaded file can be saved even before audio processing resumes.
+        pendingBuffers.read([&](const audible_beads::FrozenBuffer& in, uint64_t revision) {
+            if (revision != appliedBufferRevision.load()) { *buffer = in; available = true; }
+        });
+        if (!available) available = frozenBuffers.read([&](const audible_beads::FrozenBuffer& in, uint64_t) { *buffer = in; });
+        if (!available) {
+            system::remove(system::join(getPatchStorageDirectory(), "frozen-buffer.bin"));
+            return;
+        }
+        const auto path = system::join(createPatchStorageDirectory(), "frozen-buffer.bin");
+        const auto temporary = path + ".tmp";
+        if (!audible_beads::writeFrozenFile(temporary, *buffer)) {
+            WARN("Beads: could not save frozen buffer"); system::remove(temporary); return;
+        }
+        // Rack's system helper handles replacing an existing destination.
+        if (!system::rename(temporary, path)) WARN("Beads: could not replace frozen buffer file");
+    }
+
+    static std::string bufferDialog(bool save) {
+        osdialog_filters* filters = osdialog_filters_parse("WAV:wav");
+        char* selected = osdialog_file(save ? OSDIALOG_SAVE : OSDIALOG_OPEN,
+                                      nullptr, save ? "beads.wav" : nullptr, filters);
+        osdialog_filters_free(filters);
+        std::string path = selected ? selected : "";
+        std::free(selected);
+        if (save && !path.empty() && system::getExtension(path).empty()) path += ".wav";
+        return path;
+    }
+
+    void loadBufferWav() {
+        const auto path = bufferDialog(false);
+        if (path.empty()) return;
+        auto buffer = std::make_unique<audible_beads::FrozenBuffer>();
+        if (audible_beads::readBufferWav(path, std::clamp(menuMedia.load(), 0, 3), *buffer)) queueBuffer(*buffer);
+        else osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK,
+            "Could not load the buffer. Choose a mono or stereo WAV at 8-192 kHz.");
+    }
+
+    void saveBufferWav() {
+        auto buffer = std::make_unique<audible_beads::FrozenBuffer>();
+        bool available = false;
+        pendingBuffers.read([&](const audible_beads::FrozenBuffer& in, uint64_t revision) {
+            if (revision != appliedBufferRevision.load()) { *buffer = in; available = true; }
+        });
+        if (!available) available = frozenBuffers.read([&](const audible_beads::FrozenBuffer& in, uint64_t) { *buffer = in; });
+        if (!available) {
+            osdialog_message(OSDIALOG_INFO, OSDIALOG_OK, "Freeze recorded audio before saving the buffer.");
+            return;
+        }
+        const auto path = bufferDialog(true);
+        if (!path.empty() && !audible_beads::writeBufferWav(path, *buffer))
+            osdialog_message(OSDIALOG_WARNING, OSDIALOG_OK, "Could not save the buffer WAV.");
     }
 
     void dataFromJson(json_t* root) override {
@@ -274,6 +354,14 @@ struct Beads : Module {
             controlPhase = uiPhase = 0.; restartGainSamples = 0; timeHysteresis = 0.f;
             for (int i = 0; i < 4; ++i) { down[i] = previousButton[i] = false; held[i] = 0; }
         }
+        uint64_t appliedRevision = appliedBufferRevision.load();
+        pendingBuffers.read([&](const audible_beads::FrozenBuffer& buffer, uint64_t revision) {
+            if (revision == appliedRevision) return;
+            if (engine->restoreFrozenBuffer(buffer)) {
+                menuMedia.store(buffer.media); menuFreezeLatch.store(1);
+            }
+            appliedRevision = revision;
+        });
         syncSettingParams();
         media = std::clamp(menuMedia.load(std::memory_order_relaxed), 0, 3);
         seedLocked = menuSeedLocked.load(std::memory_order_relaxed) != 0;
@@ -388,6 +476,14 @@ struct Beads : Module {
         auto out = supportedRate ? engine->process(input, controls,
             outputs[AUDIO_R_OUTPUT].isConnected() || gateOutput) : audible_beads::Output{};
         statusSynth.store(engine->synthMode(), std::memory_order_relaxed);
+        if (!engine->hasFrozenBuffer()) {
+            frozenBuffers.clear(); savedBufferVersion = UINT64_MAX;
+        } else if (savedBufferVersion != engine->frozenBufferVersion()) {
+            if (frozenBuffers.publish([&](audible_beads::FrozenBuffer& buffer) {
+                return engine->captureFrozenBuffer(buffer);
+            })) savedBufferVersion = engine->frozenBufferVersion();
+        }
+        appliedBufferRevision.store(appliedRevision);
         if (restartGainSamples && supportedRate) --restartGainSamples;
         outputs[AUDIO_L_OUTPUT].setVoltage(out.left);
         outputs[AUDIO_R_OUTPUT].setVoltage(out.right);
@@ -501,13 +597,14 @@ struct Beads : Module {
             }
             previousButton[i] = pressedNow[i];
         }
-        // ASSIGN+FREEZE is the firmware autosave gesture. Autosave is outside
-        // this module port, so consume the complete chord without triggering
-        // either button's individual action.
+        // ASSIGN+FREEZE is the firmware autosave gesture. Rack saves frozen
+        // audio with the patch; consume the chord without individual actions.
         if (comboConsumed && !pressedNow[1] && !pressedNow[2] && !pressedNow[3]) comboConsumed = false;
     }
 
     void addMenuItems(Menu* menu) {
+        menu->addChild(createMenuItem("Load buffer WAV...", "", [=] { loadBufferWav(); }));
+        menu->addChild(createMenuItem("Save frozen buffer WAV...", "", [=] { saveBufferWav(); }));
         menu->addChild(createMenuLabel(statusSynth.load() ? "Wavetable synthesis (FREEZE stops new grains)" : "Recorded audio (FREEZE holds the buffer)"));
         menu->addChild(createSubmenuItem("Edit knobs", "", [=](Menu* m) {
             const char* labels[] = {"Normal mix controls", "Input gain (red knob)", "CV assignment amounts (green knobs)"};

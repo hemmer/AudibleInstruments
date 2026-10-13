@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
 #include <memory>
 #include <new>
 #include <stdexcept>
@@ -54,6 +55,31 @@ struct Input {
 };
 
 struct Output { float left = 0.f, right = 0.f; };
+
+struct FrozenBuffer {
+    static constexpr size_t bankBytes = 256 * 1024;
+    std::array<std::array<uint8_t, bankBytes>, 3> banks{};
+    beads::DelayBufferState state{};
+    int media = beads::Processor::MEDIA_DIGITAL;
+    bool mono = false;
+    static int capacity(int media, bool mono) {
+        const int bits[] = {8, 12, 12, 16};
+        return media >= 0 && media < 4
+            ? int(beads::kDelayBufferSizeBits / (bits[media] * 2)) * (mono ? 2 : 1) : 0;
+    }
+    static int sampleRate(int media) {
+        const int rates[] = {24000, 24000, 32000, 48000};
+        return media >= 0 && media < 4 ? rates[media] : 0;
+    }
+    bool valid() const {
+        const int maximum = capacity(media, mono);
+        return maximum && state.frozen && state.write_ptr >= 0 && state.write_ptr < maximum
+            && state.duration >= 515 && state.duration <= maximum
+            && state.tail_write_ptr >= 0 && state.tail_write_ptr <= 256
+            && state.tail_xfade_duration >= 0 && state.tail_xfade_duration <= 256
+            && state.written_since_last_frozen >= 0 && state.written_since_last_frozen < maximum;
+    }
+};
 
 class BeadsEngine {
     // SRC objects are prepared once, never setRates()/destroyed in process().
@@ -122,6 +148,10 @@ class BeadsEngine {
     bool seedHigh_ = false, freezeHigh_ = false, alignedSeed_ = false, alignedFreeze_ = false;
     bool restartHigh_ = false, outputMode_ = false, outputHigh_ = false;
     bool scheduledMode_ = false, scheduledHigh_ = false;
+    bool bufferFrozen_ = false;
+    bool requestedFrozen_ = false, coldFreezeLatch_ = false;
+    int capturedTail_ = -1;
+    uint64_t bufferVersion_ = 0;
     double noInputSeconds_ = 0.;
     std::array<Sample, 2048> history_{};
     Queue<Event, 4096> events_;
@@ -169,6 +199,8 @@ public:
         storage->processor.Init(buffers, storage->reverb, &random_);
         storage->synth.Init(storage->reverb, &random_);
         synth_ = true; mono_ = false;
+        bufferFrozen_ = requestedFrozen_ = coldFreezeLatch_ = false;
+        capturedTail_ = -1; ++bufferVersion_;
         leftConnected_ = rightConnected_ = false;
         media_ = beads::Processor::MEDIA_DIGITAL;
         seedHigh_ = freezeHigh_ = restartHigh_ = false;
@@ -194,6 +226,55 @@ public:
     uint32_t randomState() const { return random_.state(); }
     uint8_t vuMeter() const { return gain_.vuMeter(); }
     bool adjustingGain() const { return gain_.adjusting(); }
+    bool hasFrozenBuffer() const { return !synth_ && requestedFrozen_ && bufferFrozen_; }
+    uint64_t frozenBufferVersion() const { return bufferVersion_; }
+    bool captureFrozenBuffer(FrozenBuffer& out) const {
+        if (!hasFrozenBuffer()) return false;
+        out.media = int(media_); out.mono = mono_;
+        out.state = core_->processor.buffer_state();
+        if (!out.valid()) return false;
+        for (size_t i = 0; i < 3; ++i)
+            std::memcpy(out.banks[i].data(), core_->delay[i], FrozenBuffer::bankBytes);
+        return true;
+    }
+    bool restoreFrozenBuffer(const FrozenBuffer& in) {
+        if (!in.valid()) return false;
+        synth_ = false; media_ = static_cast<beads::Processor::Media>(in.media); mono_ = in.mono;
+        core_->processor.Configure(media_, mono_);
+        for (size_t i = 0; i < 3; ++i)
+            std::memcpy(core_->delay[i], in.banks[i].data(), FrozenBuffer::bankBytes);
+        if (!core_->processor.restore_buffer_state(in.state)) return false;
+        selectTransport(); muteBlocks_ = 0; noInputSeconds_ = 0.;
+        gain_.init(engineRate_, clipMode(), true);
+        bufferFrozen_ = true; capturedTail_ = in.state.tail_write_ptr; ++bufferVersion_;
+        requestedFrozen_ = coldFreezeLatch_ = true;
+        return true;
+    }
+    // File conversion runs outside process(), using an isolated firmware core.
+    static bool importFrozenBuffer(const beads::FloatFrame* frames, int count,
+                                   int media, bool mono, FrozenBuffer& out) {
+        if (!FrozenBuffer::capacity(media, mono)) return false;
+        auto scratch = std::make_unique<Core>();
+        uint8_t* banks[3] = {scratch->delay[0], scratch->delay[1], scratch->delay[2]};
+        scratch->processor.Init(banks, scratch->reverb);
+        scratch->processor.Configure(static_cast<beads::Processor::Media>(media), mono);
+        if (!scratch->processor.import_buffer(frames, count)) return false;
+        out.media = media; out.mono = mono; out.state = scratch->processor.buffer_state();
+        for (size_t i = 0; i < 3; ++i)
+            std::memcpy(out.banks[i].data(), scratch->delay[i], FrozenBuffer::bankBytes);
+        return out.valid();
+    }
+    static int exportFrozenBuffer(const FrozenBuffer& in, beads::FloatFrame* frames, int capacity) {
+        if (!in.valid()) return 0;
+        auto scratch = std::make_unique<Core>();
+        uint8_t* banks[3] = {scratch->delay[0], scratch->delay[1], scratch->delay[2]};
+        scratch->processor.Init(banks, scratch->reverb);
+        scratch->processor.Configure(static_cast<beads::Processor::Media>(in.media), in.mono);
+        for (size_t i = 0; i < 3; ++i)
+            std::memcpy(scratch->delay[i], in.banks[i].data(), FrozenBuffer::bankBytes);
+        if (!scratch->processor.restore_buffer_state(in.state)) return 0;
+        return scratch->processor.export_buffer(frames, capacity);
+    }
     size_t coreBytes() const { return sizeof(Core); }
     // Nominal SRC + buffering latency, excluding grain/delay/wow/reverb latency.
     double transportLatencySeconds() const {
@@ -212,6 +293,7 @@ public:
         seedHigh_ = schmitt(seedHigh_, in.seedConnected ? in.seed : 0.f);
         freezeHigh_ = schmitt(freezeHigh_, in.freeze);
         const bool frozen = freezeHigh_ || controls.freezeLatch;
+        requestedFrozen_ = frozen; coldFreezeLatch_ = controls.freezeLatch;
         const bool anyInput = in.leftConnected || in.rightConnected;
         if (anyInput || frozen || muteBlocks_) noInputSeconds_ = 0.;
         else noInputSeconds_ += 1. / hostRate_;
@@ -219,6 +301,7 @@ public:
         auto wantMedia = static_cast<beads::Processor::Media>(std::clamp(int(controls.media), 0, 3));
         const bool wantMono = !(in.leftConnected && in.rightConnected);
         if (!frozen && (wantSynth != synth_ || wantMedia != media_ || wantMono != mono_)) {
+            bufferFrozen_ = false; capturedTail_ = -1; ++bufferVersion_;
             synth_ = wantSynth; mono_ = wantMono; media_ = wantMedia;
             // Firmware initializes Synth once and retains its voice/reverb
             // bookkeeping across returns. Both engines share the reverb RAM.
@@ -318,7 +401,13 @@ private:
     Sample alignedControls(uint64_t index) const {
         int64_t host = int64_t(std::floor(index * double(hostRate_) / engineRate_))
                      - pair_->input.latency();
-        if (host < 0) return Sample{};
+        if (host < 0) {
+            Sample initial{};
+            // A restored latch also applies to the resampler's leading silence.
+            // Otherwise the first block can overwrite the saved recording.
+            initial.controls.freezeLatch = coldFreezeLatch_;
+            return initial;
+        }
         return history_[uint64_t(host) % history_.size()];
     }
     void accept(const beads::FloatFrame& input) {
@@ -379,6 +468,12 @@ private:
         else for (int i = 0; i < count; ++i)
             if (!outputs_.push(resampled[i])) ++stats.queueErrors;
         ++stats.blocks; position_ = 0; blockHasSeed_ = false;
+        const auto bufferState = core_->processor.buffer_state();
+        const bool frozen = !synth_ && bufferState.frozen;
+        if (frozen != bufferFrozen_ || (frozen && capturedTail_ < 256 && bufferState.tail_write_ptr == 256)) {
+            bufferFrozen_ = frozen; capturedTail_ = frozen ? bufferState.tail_write_ptr : -1;
+            ++bufferVersion_;
+        }
     }
 };
 
