@@ -3,8 +3,9 @@
 #include "Beads/ControlLayer.hpp"
 #include "Beads/PanelLayout.hpp"
 #include "plugin.hpp"
-#define DRWAV_API static
-#define DRWAV_PRIVATE static
+// Keep the bundled WAV API private; only a subset is used by this module.
+#define DRWAV_API [[maybe_unused]] static
+#define DRWAV_PRIVATE [[maybe_unused]] static
 #define DR_WAV_IMPLEMENTATION
 #include "Beads/BufferFiles.hpp"
 #include "beads/pot_controller.h"

@@ -36,8 +36,10 @@ struct Controls {
     // Values after panel/CV conversion: TIME/SIZE/SHAPE bases in [0,1],
     // PITCH base/CV in semitones, CV for other grains = volts / 5,
     // density CV = volts / 5. Pot laws/filtering belong to the Rack control layer.
-    beads::Parameters grain{{0.25f, 0.f, 0.f, false}, {0.5f, 0.f, 0.f, false},
-                            {0.5f, 0.f, 0.f, false}, {0.f, 0.f, 0.f, false}, false};
+    beads::Parameters grain{{0.25f, 0.f, 0.f, false, nullptr, {}},
+                            {0.5f, 0.f, 0.f, false, nullptr, {}},
+                            {0.5f, 0.f, 0.f, false, nullptr, {}},
+                            {0.f, 0.f, 0.f, false, nullptr, {}}, false};
     beads::ModulatedParameter density{0.4f, 0.f};
     beads::Processor::MixParameters mix{0.f, 0.5f, 0.f, false};
     // Integers at the external boundary let serialized/UI values be validated
