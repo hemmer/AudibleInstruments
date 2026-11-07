@@ -32,12 +32,12 @@ inline rack::math::Vec vuLight() { return {37.131983f, 309.129330f}; }
 inline rack::math::Vec assignButton() { return {20.110009f, 226.644582f}; }
 inline rack::math::Vec shape() { return {137.771940f, 178.837170f}; }
 inline rack::math::Vec feedback() { return {20.110010f, 178.837170f}; }
-inline rack::math::Vec reverb() { return {189.571555f, 178.837170f}; }
-inline rack::math::Vec dryWet() { return {189.571555f, 226.644582f}; }
+inline rack::math::Vec reverb() { return {189.571556f, 226.644582f}; }
+inline rack::math::Vec dryWet() { return {189.571555f, 178.837170f}; }
 inline rack::math::Vec density() { return {104.825455f, 71.121242f}; }
 inline rack::math::Vec freezeButton() { return {25.883462f, 52.381748f}; }
 inline rack::math::Vec seedButton() { return {183.800148f, 52.381748f}; }
 inline rack::math::Vec feedbackLight() { return {20.112051f, 205.987737f}; }
-inline rack::math::Vec reverbLight() { return {189.571554f, 205.987737f}; }
-inline rack::math::Vec dryWetLight() { return {189.571554f, 253.797187f}; }
+inline rack::math::Vec reverbLight() { return {189.571554f, 253.797187f}; }
+inline rack::math::Vec dryWetLight() { return {189.571554f, 205.987737f}; }
 }} // namespace audible_beads::panel

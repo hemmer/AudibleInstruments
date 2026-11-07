@@ -121,7 +121,7 @@ struct Beads : Module {
     float grainBase[4]{.25f, .5f, .5f, 0.f};
     float grainAmount[4]{};
     float grainCv[4]{};
-    float densityBase = .625f, densityCv = 0.f, assignCv = 0.f;
+    float densityBase = .5f, densityCv = 0.f, assignCv = 0.f;
     float timeHysteresis = 0.f;
 
     Beads() {
@@ -141,7 +141,7 @@ struct Beads : Module {
         configParam(SIZE_AMOUNT_PARAM, -1.f, 1.f, 0.f, "Size CV / randomness amount");
         configParam(SHAPE_AMOUNT_PARAM, -1.f, 1.f, 0.f, "Shape CV / randomness amount");
         configParam(PITCH_AMOUNT_PARAM, -1.f, 1.f, 0.f, "Pitch CV / randomness amount");
-        configParam(DENSITY_PARAM, -1.f, 1.f, .25f, "Grain density");
+        configParam(DENSITY_PARAM, -1.f, 1.f, 0.f, "Grain density");
         getParamQuantity(DENSITY_PARAM)->description =
             "Negative: regular grains / clock division.\nZero: idle center.\nAt zero, unlatched: one grain per "
             "trigger.\nPositive: random grains / clock probability.";
@@ -180,7 +180,7 @@ struct Beads : Module {
         getParamQuantity(SHAPE_AMOUNT_PARAM)->description = getParamQuantity(TIME_AMOUNT_PARAM)->description;
         getParamQuantity(PITCH_AMOUNT_PARAM)->description = getParamQuantity(TIME_AMOUNT_PARAM)->description;
         getParamQuantity(SEED_PARAM)->description =
-            "Momentary seed / clock.\nHold 4 seconds and release to latch.\nSEED + FREEZE also locks the seed.";
+            "Momentary seed / clock.\nHold 1 seconds and release to latch.\nSEED + FREEZE also locks the seed.";
         getParamQuantity(MEDIA_PARAM)->description =
             "Short press: change media.\nHold 1.5 seconds, then release:\nrestart automatic gain adjustment.";
         engine = std::make_unique<audible_beads::BeadsEngine>();
@@ -486,7 +486,7 @@ struct Beads : Module {
             grainBase[3] = 0.f;
             grainAmount[0] = grainAmount[1] = grainAmount[2] = grainAmount[3] = 0.f;
             grainCv[0] = grainCv[1] = grainCv[2] = grainCv[3] = 0.f;
-            densityBase = .625f;
+            densityBase = .5f;
             densityCv = assignCv = 0.f;
             for (int i = 0; i < 3; ++i) {
                 mixPots[i].Init(1.f, 0.f);
@@ -871,12 +871,12 @@ struct Beads : Module {
                             menuMedia.store(media);
                         }
                     } else if (i == 2) {
-                        // Firmware recognizes a four-second hold on release.
-                        seedLocked = held[i] >= uint64_t(args.sampleRate * 4.0);
+                        // Match Stages' one-second long-press gesture.
+                        seedLocked = held[i] >= uint64_t(args.sampleRate * 1.0);
                         menuSeedLocked.store(seedLocked);
                     } else if (i == 3) {
                         bool edited = assignmentEdited[0] || assignmentEdited[1] || assignmentEdited[2];
-                        if (!edited) {
+                        if (!edited && held[i] < uint64_t(args.sampleRate * 1.0)) {
                             assignment = assignment == 3 ? 0 : (assignment + 1) % 3;
                             menuAssignment.store(assignment);
                         }
@@ -891,6 +891,11 @@ struct Beads : Module {
                     }
                 }
                 held[i] = 0;
+            }
+            if (i == 3 && down[i] && !comboConsumed && held[i] == uint64_t(args.sampleRate * 1.0)) {
+                // Hold the CV button for one second to expose the three green
+                // CV amount knobs. A second hold returns to the normal view.
+                editView.store(editView.load() == 2 ? 0 : 2);
             }
             previousButton[i] = pressedNow[i];
         }
