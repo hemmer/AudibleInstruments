@@ -37,7 +37,7 @@ jobs:
 
   build-mac:
     name: mac 
-    runs-on: macos-14
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
